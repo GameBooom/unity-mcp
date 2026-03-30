@@ -37,8 +37,8 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 
 - This package is **Editor-only**. It does not add runtime components to your built game.
 - The MCP server listens on `http://127.0.0.1:8765/` by default.
-- The open-source build now defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` is centered on `execute_code` plus a small set of context, input simulation, and verification tools. Switch to `full` in the MCP Server window if you want every tool exposed.
-- All exposed MCP tools run directly in the open-source build. There is no extra approval toggle.
+- The package defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` is centered on `execute_code` plus a small set of context, input simulation, and verification tools. Switch to `full` in the MCP Server window if you want every tool exposed.
+- All exposed MCP tools run directly. There is no extra approval toggle.
 
 ## Quick Start
 
@@ -232,20 +232,6 @@ MCP Server (HTTP JSON-RPC 2.0)
 ```
 External AI Client → HTTP Request → MCPRequestHandler → MCPExecutionBridge → FunctionInvokerController → tool method
 ```
-
-## GameBooom Pro
-
-Looking for more? [GameBooom Pro](https://gamebooom.ai) adds these capabilities:
-
-- **In-Editor Chat UI** — Native chat interface with streaming responses, no external AI client needed
-- **Orchestrator** — Multi-step task automation (describe a goal, AI plans and executes)
-- **Automated Testing** — Input simulation + code execution for end-to-end test workflows
-- **Code Execution** — Run any C# code in the sandbox, whether Unity is playing or idle
-- **Vision / Multimodal** — Screenshot → AI analysis → auto-fix UI issues
-- **Checkpoint Rollback** — Undo any AI modification with one click
-- **AI Asset Generation** — Image, 3D model, animation, and audio generation
-- **Smart Context System** — Auto-inject scene hierarchy, project structure, git status into prompts
-- **Managed Hosting** — No API key needed, backend-proxied LLM access
 
 ## Requirements
 

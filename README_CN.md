@@ -37,8 +37,8 @@ GameBooom MCP For Unity 是一个开源的 Unity 编辑器插件，作为 MCP (M
 
 - 这是一个 **仅限 Editor** 的包，不会向最终构建产物添加运行时代码。
 - MCP Server 默认监听 `http://127.0.0.1:8765/`。
-- 开源版现在默认使用 `core` MCP 工具暴露配置，减少 AI 客户端的工具噪音；`core` 以 `execute_code` 为主，只保留少量上下文、输入模拟和验证工具。如果你需要完整工具集，可在 MCP Server 窗口切换到 `full`。
-- 开源版中所有已暴露的 MCP 工具都会直接执行，不再提供额外的 approval 开关。
+- 插件默认使用 `core` MCP 工具暴露配置，减少 AI 客户端的工具噪音；`core` 以 `execute_code` 为主，只保留少量上下文、输入模拟和验证工具。如果你需要完整工具集，可在 MCP Server 窗口切换到 `full`。
+- 所有已暴露的 MCP 工具都会直接执行，不再提供额外的 approval 开关。
 
 ## 快速开始
 
@@ -232,20 +232,6 @@ MCP Server (HTTP JSON-RPC 2.0)
 ```
 外部 AI 客户端 → HTTP 请求 → MCPRequestHandler → MCPExecutionBridge → FunctionInvokerController → 工具方法
 ```
-
-## GameBooom Pro
-
-想要更多能力？[GameBooom Pro](https://gamebooom.ai) 在社区版基础上提供：
-
-- **编辑器内聊天 UI** — 原生聊天界面，流式响应，无需外部 AI 客户端
-- **Orchestrator 编排器** — 多步任务自动化（描述目标，AI 自动规划并执行）
-- **自动化测试** — 输入模拟 + 代码执行，实现端到端测试工作流
-- **代码执行** — 无论是在 Unity 运行时或者空闲时都能在沙箱安全执行任意 C# 代码
-- **Vision / 多模态** — 截图 → AI 分析 → 自动修复 UI 问题
-- **Checkpoint 回滚** — 一键撤回 AI 的任何修改
-- **AI 资产生成** — 图片、3D 模型、动画、音效生成
-- **智能上下文系统** — 自动注入场景层级、项目结构、Git 状态到提示词
-- **托管服务** — 无需 API Key，后端代理大模型访问
 
 ## 环境要求
 
