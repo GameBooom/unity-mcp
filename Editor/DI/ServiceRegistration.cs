@@ -1,4 +1,4 @@
-// Copyright (C) GameBooom. Licensed under GPLv3.
+// Copyright (C) GameBooom. Licensed under MIT.
 
 using GameBooom.Editor.MCP.Server;
 using GameBooom.Editor.Services;

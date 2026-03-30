@@ -2,7 +2,8 @@
   "name": "com.gamebooom.unity.mcp",
   "version": "0.1.2",
   "displayName": "GameBooom MCP For Unity - Unity MCP Server",
-  "description": "Open-source MCP server for Unity Editor. Let AI assistants like Claude Code, Cursor, Codex, and Copilot control Unity through 60+ built-in tools.",
+  "description": "MIT-licensed MCP server for Unity Editor with execute_code, prompts/resources, input simulation, screenshots, and play mode automation.",
+  "license": "MIT",
   "unity": "2022.3",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.2.1",

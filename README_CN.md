@@ -5,7 +5,7 @@
   </p>
   <p align="center">
     <a href="#"><img src="https://img.shields.io/badge/Unity-2022.3%2B-black?logo=unity" alt="Unity 6000.0+"></a>
-    <a href="#"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPLv3"></a>
+    <a href="#"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
     <a href="#"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
     <a href="#"><img src="https://img.shields.io/badge/Platform-Editor%20Only-orange" alt="Editor Only"></a>
   </p>
@@ -19,7 +19,7 @@
 
 ---
 
-GameBooom MCP For Unity 是一个开源的 Unity 编辑器插件，作为 MCP (Model Context Protocol) 服务器运行，让 Claude Code、Cursor、Windsurf、Codex、VS Code Copilot 等 AI 助手直接与你的 Unity 编辑器交互。
+GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务器，让 Claude Code、Cursor、Windsurf、Codex、VS Code Copilot 等 AI 助手直接操作正在运行的 Unity 项目。
 
 一句话描述你的游戏 — AI 助手通过 GameBooom MCP For Unity 的 77 个内置工具自动创建场景、编写脚本、验证运行态、模拟输入并完成编辑器自动化，把所有逻辑串联起来。
 
@@ -27,14 +27,21 @@ GameBooom MCP For Unity 是一个开源的 Unity 编辑器插件，作为 MCP (M
 >
 > AI 助手通过 GameBooom MCP For Unity 全程处理：创建场景、生成全部脚本、搭建 UI、配置游戏逻辑 — 只需一句话。
 
+## 能力概览
+
+- **`execute_code` 主工具优先** — 核心体验围绕一个高灵活度 C# 执行工具构建，适合复杂编辑器/运行态编排
+- **Play Mode 自动化闭环** — 进入运行模式、模拟键鼠输入、截图、查看日志、验证行为都能在同一 MCP 会话里完成
+- **内建项目上下文** — 直接提供项目状态、当前场景、选择对象、编译错误、控制台输出和 MCP 交互记录资源
+- **默认聚焦，必要时全量** — 默认 `core` 工具集更利于 AI 选工具，需要时可切到 `full` 暴露全部 77 个工具
+- **单 Unity 包落地** — 不需要额外 approval 开关，Unity 侧也不依赖单独 Python 守护进程
+- **可扩展** — 支持 Attribute 发现自定义工具，也支持连接外部 MCP 服务
+
 ## 核心特性
 
-- **77 个内置工具** — 覆盖场景编辑、脚本、资产、运行态控制、截图、Prompts 与编辑器自动化，共 18 个模块
-- **`execute_code` 主工具** — 适合复杂编辑器/运行态编排的高灵活度 C# 执行工具
-- **输入模拟 + 截图验证** — 在 Play Mode 中模拟键盘/鼠标，再用 Game View / Scene View 截图验证结果
+- **77 个内置工具** — 覆盖场景编辑、脚本、资产、运行态控制、截图、Prompts、Resources 与编辑器自动化，共 18 个模块
 - **Resources 与 Prompts** — 暴露实时项目上下文、场景/选择/错误资源、资源模板，以及常见 Unity 工作流的可复用 MCP Prompt
+- **输入模拟 + 截图验证** — 在 Play Mode 中模拟键盘/鼠标，再用 Game View / Scene View 截图验证结果
 - **MCP Server + MCP Client** — 既能把 Unity 暴露给外部 AI 客户端，也能连接外部 MCP 服务扩展能力
-- **反射式工具发现** — 添加自定义工具只需标注 Attribute，无需注册代码
 - **厂商无关** — 兼容任意支持 MCP 的 AI 客户端：Claude Code、Cursor、Windsurf、Codex、VS Code Copilot 等
 
 ## 开始前说明
@@ -182,6 +189,22 @@ url = "http://127.0.0.1:8765/"
 
 打开你的 AI 客户端，试试：*"创建一个 3D 平台跳跃关卡，包含 5 个浮空平台"*
 
+## 与 Coplay 的对比
+
+下表基于 Coplay 官方公开 GitHub README 所描述的能力与安装方式进行对比。
+
+| 维度 | GameBooom MCP For Unity | Coplay `unity-mcp` |
+|------|-------------------------|--------------------|
+| Unity 侧架构 | Unity 包内置 HTTP MCP server | Unity bridge + 本地 Python MCP server |
+| 额外本地依赖 | `core` 工作流下只需要 Unity 包本身 | 官方 quick start 要求 Python 3.10+ 与 `uv` |
+| 主要交互模型 | 以 `execute_code` 为主，再配合少量高频辅助工具 | 以大量 `manage_*` 工具族为主 |
+| 默认工具暴露 | 默认 `core` 精简工具集，可切 `full` | 公开文档强调广泛工具面 |
+| 上下文能力 | 内建项目资源、资源模板、工作流 prompts、交互历史 | 公开 README 主要强调 bridge/server 与工具族 |
+| Play Mode 验证 | 包内置运行模式控制、截图、日志、输入模拟 | 公开 README 强调广泛 Unity 管理与自动化能力 |
+| 定位 | 轻量、直接、MIT 协议的 Unity MCP 服务器 | Coplay 维护的全功能 Unity bridge 方案 |
+
+Coplay 信息来源：[CoplayDev/unity-mcp](https://github.com/CoplayDev/unity-mcp)
+
 ## MCP 能力结构
 
 当前开源包有四层高价值能力：
@@ -261,8 +284,6 @@ MCP Server (HTTP JSON-RPC 2.0)
 
 欢迎贡献！提交 PR 前请阅读 [贡献指南](CONTRIBUTING.md)。
 
-GameBooom MCP For Unity 采用 GPLv3 许可证，所有衍生作品必须同样以 GPLv3 开源。
-
 ## 许可证
 
-[GPLv3](LICENSE) — 可自由使用、修改和分发，衍生作品必须以 GPLv3 开源。
+[MIT](LICENSE) — 可自由使用、修改、分发，也可集成到商业或开源项目中。

@@ -5,7 +5,7 @@
   </p>
   <p align="center">
     <a href="#"><img src="https://img.shields.io/badge/Unity-2022.3%2B-black?logo=unity" alt="Unity 6000.0+"></a>
-    <a href="#"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPLv3"></a>
+    <a href="#"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
     <a href="#"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
     <a href="#"><img src="https://img.shields.io/badge/Platform-Editor%20Only-orange" alt="Editor Only"></a>
   </p>
@@ -19,7 +19,7 @@
 
 ---
 
-GameBooom MCP For Unity is an open-source Unity Editor plugin that acts as an MCP (Model Context Protocol) server, allowing AI assistants like Claude Code, Cursor, Windsurf, Codex, and VS Code Copilot to interact directly with your Unity Editor.
+GameBooom MCP For Unity is an MIT-licensed Unity Editor MCP server that lets AI assistants like Claude Code, Cursor, Windsurf, Codex, and VS Code Copilot operate directly inside your running Unity project.
 
 Describe your game in one sentence — your AI assistant builds it in Unity through GameBooom MCP For Unity's 77 built-in tools for scene creation, script generation, runtime validation, input simulation, and editor automation.
 
@@ -27,14 +27,21 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 >
 > Your AI assistant handles it through GameBooom MCP For Unity: creates the scene, generates all scripts, sets up the UI, and configures the game logic — all from a single prompt.
 
+## Why This Project
+
+- **`execute_code` First** — The package is optimized around one high-flexibility C# execution tool for rich editor/runtime orchestration when many small tools would be noisy
+- **Play Mode Automation** — Enter play mode, simulate keyboard/mouse input, capture screenshots, inspect logs, and validate behavior from the same MCP session
+- **Project Context Built In** — Exposes live resources for project state, active scene, selection, compilation, console output, and MCP interaction history
+- **Focused by Default, Full When Needed** — `core` exposes a compact high-signal toolset; `full` exposes all 77 tools
+- **Single Unity Package** — No extra approval UI, no external daemon to click through, and no Python requirement for the Unity-side plugin itself
+- **Extensible** — Add custom tools with attribute-based discovery, or connect Unity to external MCP services when needed
+
 ## Highlights
 
-- **77 Built-in Tools** — Scene editing, assets, scripts, play mode control, screenshots, prompts, and editor automation across 18 modules
-- **`execute_code` First Workflow** — A high-flexibility C# execution tool for rich editor/runtime orchestration when many small tools would be noisy
+- **77 Built-in Tools** — Scene editing, assets, scripts, play mode control, screenshots, prompts, resources, and editor automation across 18 modules
+- **Resources & Prompts** — Live project context, scene/selection/error resources, resource templates, and reusable workflow prompts
 - **Input Simulation + Screenshots** — Drive play mode with keyboard/mouse simulation and verify results with game/scene captures
-- **Resources & Prompts** — Exposes live project context, scene/selection/error resources, resource templates, and reusable MCP prompts
 - **MCP Server + MCP Client** — Expose Unity to external AI clients and connect Unity to external MCP servers when needed
-- **Reflection-Based Tool Discovery** — Add custom tools by annotating public static classes and methods
 - **Vendor Agnostic** — Works with any AI client that supports MCP: Claude Code, Cursor, Windsurf, Codex, VS Code Copilot, etc.
 
 ## Before You Start
@@ -180,6 +187,22 @@ If those work, the MCP server, resources, and primary execution tool are connect
 
 Open your AI client and try: *"Create a 3D platformer level with 5 floating platforms"*
 
+## Comparison With Coplay
+
+The table below compares this repository with the publicly documented behavior of Coplay's open-source `unity-mcp` repository on GitHub.
+
+| Area | GameBooom MCP For Unity | Coplay `unity-mcp` |
+|------|--------------------------|--------------------|
+| Unity-side architecture | Embedded Unity Editor package with built-in HTTP MCP server | Unity bridge plus local Python MCP server |
+| Extra local prerequisites | Unity package only for core workflows | Unity + Python 3.10+ + `uv` according to the public quick start |
+| Primary workflow style | `execute_code` first, then focused helper tools | Broad `manage_*` tool families exposed through the bridge |
+| Default tool exposure | Compact `core` profile with optional `full` expansion | Public docs emphasize a broad always-available tool surface |
+| Built-in context model | Project resources, resource templates, workflow prompts, interaction history | Public README emphasizes tool families and bridge/server workflow |
+| Play mode validation | Built-in play mode control, screenshots, logs, and input simulation in the package | Public README emphasizes broad Unity management and automation tools |
+| Positioning | Lightweight, direct, MIT-licensed Unity MCP server for AI-driven editor control | Full-featured Unity bridge maintained by Coplay with Python-backed server setup |
+
+Source for Coplay column: [CoplayDev/unity-mcp](https://github.com/CoplayDev/unity-mcp)
+
 ## MCP Capabilities
 
 The current open-source package exposes four high-value capability layers:
@@ -259,8 +282,6 @@ External AI Client → HTTP Request → MCPRequestHandler → MCPExecutionBridge
 
 Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
 
-Since GameBooom MCP For Unity is licensed under GPLv3, all derivative works must also be open-sourced under the same license.
-
 ## License
 
-[GPLv3](LICENSE) — Free to use, modify, and distribute. Any derivative work must be open-sourced under GPLv3.
+[MIT](LICENSE) — Free to use, modify, distribute, and integrate into commercial or open-source projects.

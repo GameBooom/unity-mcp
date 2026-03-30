@@ -59,4 +59,4 @@ Before submitting a PR, please verify the change in a Unity test project:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under GPLv3.
+By contributing, you agree that your contributions will be licensed under MIT.

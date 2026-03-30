@@ -1,4 +1,4 @@
-// Copyright (C) GameBooom. Licensed under GPLv3.
+// Copyright (C) GameBooom. Licensed under MIT.
 using DescriptionAttribute = System.ComponentModel.DescriptionAttribute;
 using System.IO;
 using UnityEditor;

@@ -1,4 +1,4 @@
-// Copyright (C) GameBooom. Licensed under GPLv3.
+// Copyright (C) GameBooom. Licensed under MIT.
 
 using System.Collections.Generic;
 using GameBooom.Editor.Api;
