@@ -58,7 +58,7 @@ GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务
 在 Unity 中，打开 **Window → Package Manager → + → Add package from git URL**：
 
 ```
-https://github.com/GameBooom/unity-mcp.git
+https://github.com/FunseaAI/unity-mcp.git
 ```
 
 <details>

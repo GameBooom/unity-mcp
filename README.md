@@ -58,7 +58,7 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 In Unity, go to **Window → Package Manager → + → Add package from git URL**:
 
 ```
-https://github.com/GameBooom/unity-mcp.git
+https://github.com/FunseaAI/unity-mcp.git
 ```
 
 <details>
