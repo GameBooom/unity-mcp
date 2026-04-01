@@ -21,7 +21,7 @@
 
 GameBooom MCP For Unity is an MIT-licensed Unity Editor MCP server that lets AI assistants like Claude Code, Cursor, Windsurf, Codex, and VS Code Copilot operate directly inside your running Unity project.
 
-Describe your game in one sentence — your AI assistant builds it in Unity through GameBooom MCP For Unity's 77 built-in tools for scene creation, script generation, runtime validation, input simulation, and editor automation.
+Describe your game in one sentence — your AI assistant builds it in Unity through GameBooom MCP For Unity's 79 built-in tools for scene creation, script generation, runtime validation, input simulation, performance analysis, and editor automation.
 
 > *"Build a snake game with a 10x10 grid, food spawning, score UI, and game-over screen"*
 >
@@ -32,13 +32,13 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 - **`execute_code` First** — The package is optimized around one high-flexibility C# execution tool for rich editor/runtime orchestration when many small tools would be noisy
 - **Play Mode Automation** — Enter play mode, simulate keyboard/mouse input, capture screenshots, inspect logs, and validate behavior from the same MCP session
 - **Project Context Built In** — Exposes live resources for project state, active scene, selection, compilation, console output, and MCP interaction history
-- **Focused by Default, Full When Needed** — `core` exposes a compact high-signal toolset; `full` exposes all 77 tools
+- **Focused by Default, Full When Needed** — `core` exposes a compact high-signal toolset; `full` exposes all 79 tools
 - **Single Unity Package** — No extra approval UI, no external daemon to click through, and no Python requirement for the Unity-side plugin itself
 - **Extensible** — Add custom tools with attribute-based discovery, or connect Unity to external MCP services when needed
 
 ## Highlights
 
-- **77 Built-in Tools** — Scene editing, assets, scripts, play mode control, screenshots, prompts, resources, and editor automation across 18 modules
+- **79 Built-in Tools** — Scene editing, assets, scripts, play mode control, screenshots, performance analysis, prompts, resources, and editor automation across 19 modules
 - **Resources & Prompts** — Live project context, scene/selection/error resources, resource templates, and reusable workflow prompts
 - **Input Simulation + Screenshots** — Drive play mode with keyboard/mouse simulation and verify results with game/scene captures
 - **Built-in Updating** — Check for updates from the Unity menu and either re-pull the Git package or auto-import the latest `unitypackage`
@@ -49,7 +49,7 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 
 - This package is **Editor-only**. It does not add runtime components to your built game.
 - The MCP server listens on `http://127.0.0.1:8765/` by default.
-- The package defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` currently exposes 17 high-signal tools centered on `execute_code`, play mode control, input simulation, screenshots, logs, and compilation checks. Switch to `full` in the MCP Server window if you want all 77 tools exposed.
+- The package defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` currently exposes 19 high-signal tools centered on `execute_code`, play mode control, input simulation, screenshots, performance inspection, logs, and compilation checks. Switch to `full` in the MCP Server window if you want all 79 tools exposed.
 - All exposed MCP tools run directly. There is no extra approval toggle.
 - **Menu: `GameBooom > Check for Updates`** can refresh Git installs in place or download and import the latest `.unitypackage` automatically.
 
@@ -200,14 +200,14 @@ Source for Coplay column: [CoplayDev/unity-mcp](https://github.com/CoplayDev/uni
 
 The current open-source package exposes four high-value capability layers:
 
-- **Tools** — 77 total tools in `full`, 17 focused tools in `core`
+- **Tools** — 79 total tools in `full`, 19 focused tools in `core`
 - **Primary execution** — `execute_code` for rich editor/runtime orchestration
 - **Prompts** — workflow prompts like `fix_compile_errors`, `runtime_validation`, and `create_playable_prototype`
 - **Resources** — project context, scene summaries, selection state, compile errors, console errors, MCP interaction history, plus resource templates for scene objects, components, and asset paths
 
 ## Built-in Tools
 
-GameBooom MCP For Unity currently ships with **77 tool functions** across 18 modules:
+GameBooom MCP For Unity currently ships with **79 tool functions** across 19 modules:
 
 | Category | Tools |
 |----------|-------|
@@ -225,6 +225,7 @@ GameBooom MCP For Unity currently ships with **77 tool functions** across 18 mod
 | **Screenshot** | `capture_game_view`, `capture_scene_view` |
 | **Script Execution** | `execute_code` |
 | **Input Simulation** | `simulate_key_press`, `simulate_key_combo`, `simulate_mouse_click`, `simulate_mouse_drag` |
+| **Performance** | `get_performance_snapshot`, `analyze_scene_complexity` |
 | **Packages** | `install_package`, `remove_package`, `list_packages` |
 | **Compilation** | `wait_for_compilation`, `request_recompile`, `get_compilation_errors`, `get_reload_recovery_status` |
 | **Visual Feedback** | `select_object`, `focus_on_object`, `ping_asset`, `log_message`, `show_dialog`, `get_console_logs` |
@@ -259,7 +260,7 @@ MCP Server (HTTP JSON-RPC 2.0)
     └─ MCPRequestHandler (protocol handling)
         └─ MCPExecutionBridge
             └─ FunctionInvokerController (reflection-based invocation)
-                └─ Tool Functions (77 built-in tools across 18 modules)
+                └─ Tool Functions (79 built-in tools across 19 modules)
 ```
 
 ```

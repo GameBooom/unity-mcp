@@ -23,6 +23,8 @@ namespace GameBooom.Editor.MCP.Server
             "get_scene_info",
             "get_hierarchy",
             "get_console_logs",
+            "get_performance_snapshot",
+            "analyze_scene_complexity",
             "capture_scene_view",
             "capture_game_view",
             "wait_for_compilation",

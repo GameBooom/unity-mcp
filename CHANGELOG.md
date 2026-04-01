@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Performance analysis tools: `get_performance_snapshot` and `analyze_scene_complexity`
+
+### Changed
+- Core MCP tool profile now includes lightweight performance inspection by default
+
 ## [0.1.4] - 2026-04-01
 
 ### Added
