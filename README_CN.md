@@ -61,15 +61,6 @@ GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务
 https://github.com/FunseaAI/unity-mcp.git
 ```
 
-<details>
-<summary>其他方式：通过 OpenUPM 安装</summary>
-
-```bash
-openupm add com.gamebooom.unity.mcp
-```
-
-</details>
-
 ### 2. 启动 MCP Server
 
 **菜单：GameBooom → MCP Server** 启动服务。

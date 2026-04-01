@@ -61,15 +61,6 @@ In Unity, go to **Window → Package Manager → + → Add package from git URL*
 https://github.com/FunseaAI/unity-mcp.git
 ```
 
-<details>
-<summary>Alternative: Install via OpenUPM</summary>
-
-```bash
-openupm add com.gamebooom.unity.mcp
-```
-
-</details>
-
 ### 2. Start the MCP Server
 
 **Menu: GameBooom → MCP Server** to start the server.
