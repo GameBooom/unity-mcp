@@ -41,6 +41,7 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 - **77 Built-in Tools** — Scene editing, assets, scripts, play mode control, screenshots, prompts, resources, and editor automation across 18 modules
 - **Resources & Prompts** — Live project context, scene/selection/error resources, resource templates, and reusable workflow prompts
 - **Input Simulation + Screenshots** — Drive play mode with keyboard/mouse simulation and verify results with game/scene captures
+- **Built-in Updating** — Check for updates from the Unity menu and either re-pull the Git package or auto-import the latest `unitypackage`
 - **MCP Server + MCP Client** — Expose Unity to external AI clients and connect Unity to external MCP servers when needed
 - **Vendor Agnostic** — Works with any AI client that supports MCP: Claude Code, Cursor, Windsurf, Codex, VS Code Copilot, etc.
 
@@ -50,6 +51,7 @@ Describe your game in one sentence — your AI assistant builds it in Unity thro
 - The MCP server listens on `http://127.0.0.1:8765/` by default.
 - The package defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` currently exposes 17 high-signal tools centered on `execute_code`, play mode control, input simulation, screenshots, logs, and compilation checks. Switch to `full` in the MCP Server window if you want all 77 tools exposed.
 - All exposed MCP tools run directly. There is no extra approval toggle.
+- **Menu: `GameBooom > Check for Updates`** can refresh Git installs in place or download and import the latest `.unitypackage` automatically.
 
 ## Quick Start
 

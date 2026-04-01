@@ -41,6 +41,7 @@ GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务
 - **77 个内置工具** — 覆盖场景编辑、脚本、资产、运行态控制、截图、Prompts、Resources 与编辑器自动化，共 18 个模块
 - **Resources 与 Prompts** — 暴露实时项目上下文、场景/选择/错误资源、资源模板，以及常见 Unity 工作流的可复用 MCP Prompt
 - **输入模拟 + 截图验证** — 在 Play Mode 中模拟键盘/鼠标，再用 Game View / Scene View 截图验证结果
+- **内置更新** — 直接在 Unity 菜单中检查更新，并根据安装方式自动重新拉取 Git 包或导入最新 `unitypackage`
 - **MCP Server + MCP Client** — 既能把 Unity 暴露给外部 AI 客户端，也能连接外部 MCP 服务扩展能力
 - **厂商无关** — 兼容任意支持 MCP 的 AI 客户端：Claude Code、Cursor、Windsurf、Codex、VS Code Copilot 等
 
@@ -50,6 +51,7 @@ GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务
 - MCP Server 默认监听 `http://127.0.0.1:8765/`。
 - 插件默认使用 `core` MCP 工具暴露配置，减少 AI 客户端的工具噪音；`core` 当前暴露 17 个高频工具，以 `execute_code`、运行模式控制、输入模拟、截图、日志和编译检查为主。如果你需要完整工具集，可在 MCP Server 窗口切换到 `full`，暴露全部 77 个工具。
 - 所有已暴露的 MCP 工具都会直接执行，不再提供额外的 approval 开关。
+- **菜单：`GameBooom > Check for Updates`** 可按安装来源自动更新：Git 安装会直接重新拉取，`.unitypackage` 导入会自动下载并导入最新版。
 
 ## 快速开始
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.4] - 2026-04-01
+
+### Added
+- Built-in update checking from `GameBooom/Check for Updates` with install-source aware behavior
+- Automatic Git package refresh for Git-based installs
+- Automatic latest `.unitypackage` download and import for asset-import installs
+
+### Changed
+- Game View screenshots now default to the current Game View render size instead of a fixed 512x512 capture
+- Mouse click simulation now maps coordinates against the real Game View render size for more reliable UI and physics hits
+- Package version resolution now prefers the actual installed package location so Git installs report the correct version
+- Package metadata now points to the `FunseaAI/unity-mcp` repository and `0.1.4`
+
 ## [0.1.2] - 2026-03-30
 
 ### Added

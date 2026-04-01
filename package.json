@@ -1,6 +1,6 @@
 {
   "name": "com.gamebooom.unity.mcp",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "displayName": "GameBooom MCP for Unity",
   "description": "MIT-licensed MCP server for Unity Editor with execute_code, prompts/resources, input simulation, screenshots, and play mode automation.",
   "license": "MIT",
@@ -11,10 +11,10 @@
   },
   "keywords": ["mcp", "ai", "llm", "editor", "tools", "model-context-protocol"],
   "author": {
-    "name": "GameBooom"
+    "name": "FunseaAI"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/GameBooom/unity-mcp.git"
+    "url": "https://github.com/FunseaAI/unity-mcp.git"
   }
 }
