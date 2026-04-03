@@ -17,6 +17,8 @@
   </p>
 </p>
 
+> 💖 如果这个项目对你有帮助，欢迎顺手点一个 Star。它能帮助更多 Unity 开发者发现这个项目，也能支持后续持续维护。
+
 ---
 
 GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务器，让 Claude Code、Cursor、Windsurf、Codex、VS Code Copilot 等 AI 助手直接操作正在运行的 Unity 项目。
@@ -62,6 +64,8 @@ GameBooom MCP For Unity 是一个采用 MIT 协议的 Unity 编辑器 MCP 服务
 ```
 https://github.com/FunseaAI/unity-mcp.git
 ```
+
+> 💡 在 clone 或安装之前，如果你愿意顺手点一个 ⭐，会非常感谢。
 
 ### 2. 启动 MCP Server
 

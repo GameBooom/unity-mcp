@@ -17,6 +17,8 @@
   </p>
 </p>
 
+> 💖 If you find this project useful, please consider giving it a Star. It helps more Unity developers discover it and supports ongoing development.
+
 ---
 
 GameBooom MCP For Unity is an MIT-licensed Unity Editor MCP server that lets AI assistants like Claude Code, Cursor, Windsurf, Codex, and VS Code Copilot operate directly inside your running Unity project.
@@ -62,6 +64,8 @@ In Unity, go to **Window → Package Manager → + → Add package from git URL*
 ```
 https://github.com/FunseaAI/unity-mcp.git
 ```
+
+> 💡 Before you clone or install, a quick ⭐ on GitHub would be greatly appreciated.
 
 ### 2. Start the MCP Server
 
