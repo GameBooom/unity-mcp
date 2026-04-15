@@ -15,8 +15,8 @@ namespace GameBooom.Editor.MCP.Server
 {
     internal static class GameBooomMCPUpdateChecker
     {
-        private const string PackageName = "com.funplay.unity.mcp";
-        private const string PackageRoot = "Packages/com.funplay.unity.mcp";
+        private const string PackageName = "com.gamebooom.unity.mcp";
+        private const string PackageRoot = "Packages/com.gamebooom.unity.mcp";
         private const string DefaultAssetRoot = "Assets/unity-mcp";
         private const string GitRepositoryUrl = "https://github.com/FunplayAI/funplay-unity-mcp.git";
         private const string LatestReleaseApiUrl = "https://api.github.com/repos/FunplayAI/funplay-unity-mcp/releases/latest";

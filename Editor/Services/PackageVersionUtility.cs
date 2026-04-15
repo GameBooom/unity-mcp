@@ -9,9 +9,9 @@ namespace GameBooom.Editor.Services
 {
     internal static class PackageVersionUtility
     {
-        private const string PackageName = "com.funplay.unity.mcp";
+        private const string PackageName = "com.gamebooom.unity.mcp";
         private const string AssetInstallRoot = "Assets/unity-mcp";
-        private const string PackageInstallRoot = "Packages/com.funplay.unity.mcp";
+        private const string PackageInstallRoot = "Packages/com.gamebooom.unity.mcp";
         private static string _cachedVersion;
 
         public static string CurrentVersion

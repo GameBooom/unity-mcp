@@ -1,5 +1,5 @@
 {
-  "name": "com.funplay.unity.mcp",
+  "name": "com.gamebooom.unity.mcp",
   "version": "0.1.7",
   "displayName": "Funplay MCP for Unity",
   "description": "MIT-licensed MCP server for Unity Editor with execute_code, prompts/resources, input simulation, screenshots, and play mode automation.",
