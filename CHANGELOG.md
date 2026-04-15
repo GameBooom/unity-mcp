@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8] - 2026-04-15
+
+### Changed
+- Rebranded the open-source package and documentation from GameBooom to Funplay
+- Moved the public Git repository to `FunplayAI/funplay-unity-mcp`
+- Updated Unity menu paths to `Funplay/MCP Server` and `Funplay/Check for Updates`
+- Reorganized the README quick start and one-click client configuration guidance
+
 ## [0.1.7] - 2026-04-10
 
 ### Changed
