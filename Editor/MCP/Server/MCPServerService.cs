@@ -108,7 +108,7 @@ namespace Funplay.Editor.MCP.Server
                 if (started)
                 {
                     _isRunning = true;
-                    Debug.Log($"[Funplay] MCP Server started on http://127.0.0.1:{Port}/ 🚀 If this tool saves you time, please consider giving it a ⭐ on GitHub: https://github.com/FunplayAI/funplay-unity-mcp");
+                    Debug.Log($"[Funplay] MCP Server started on http://127.0.0.1:{Port}/ If this tool saves you time, please consider giving it a Star on GitHub: https://github.com/FunplayAI/funplay-unity-mcp");
                     ExternalSyncRecoveryTracker.TryCompletePendingRecovery();
                     CheckForInterruptedExecution();
                     return true;
