@@ -135,8 +135,7 @@ namespace Funplay.Editor.MCP.Server
             configLabel.style.marginBottom = 6;
             _mainContainer.Add(configLabel);
 
-            var port = _settingsController.MCPServerPort;
-            var homePath = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+            var homePath = GetUserHomePath();
 
             _mcpTargets = new[]
             {
@@ -144,32 +143,30 @@ namespace Funplay.Editor.MCP.Server
                 {
                     Name = "Claude Code",
                     ConfigPath = Path.Combine(homePath, ".claude.json"),
-                    Entry = new Dictionary<string, object> { ["type"] = "http", ["url"] = $"http://127.0.0.1:{port}/" },
+                    IncludeTypeField = true
                 },
                 new MCPConfigTarget
                 {
                     Name = "Cursor",
                     ConfigPath = Path.Combine(homePath, ".cursor", "mcp.json"),
-                    Entry = new Dictionary<string, object> { ["url"] = $"http://127.0.0.1:{port}/" },
                 },
                 new MCPConfigTarget
                 {
                     Name = "VS Code",
-                    ConfigPath = Path.Combine(homePath, ".vscode", "mcp.json"),
-                    Entry = new Dictionary<string, object> { ["type"] = "http", ["url"] = $"http://127.0.0.1:{port}/" },
+                    ConfigPath = GetVSCodeConfigPath(homePath),
+                    IncludeTypeField = true,
                     RootKey = "servers"
                 },
                 new MCPConfigTarget
                 {
                     Name = "Trae",
                     ConfigPath = Path.Combine(homePath, ".trae", "mcp.json"),
-                    Entry = new Dictionary<string, object> { ["url"] = $"http://127.0.0.1:{port}/" },
                 },
                 new MCPConfigTarget
                 {
                     Name = "Kiro",
                     ConfigPath = Path.Combine(homePath, ".kiro", "settings", "mcp.json"),
-                    Entry = new Dictionary<string, object> { ["type"] = "http", ["url"] = $"http://127.0.0.1:{port}/" },
+                    IncludeTypeField = true,
                     RootKey = "mcpServers"
                 },
                 new MCPConfigTarget
@@ -177,7 +174,6 @@ namespace Funplay.Editor.MCP.Server
                     Name = "Codex",
                     ConfigPath = Path.Combine(homePath, ".codex", "config.toml"),
                     IsToml = true,
-                    TomlSection = $"[mcp_servers.funplay]\nurl = \"http://127.0.0.1:{port}/\"\n"
                 },
             };
 
@@ -396,10 +392,9 @@ namespace Funplay.Editor.MCP.Server
         {
             public string Name;
             public string ConfigPath;
-            public Dictionary<string, object> Entry;
             public string RootKey;
             public bool IsToml;
-            public string TomlSection;
+            public bool IncludeTypeField;
         }
 
         private void ConfigureMCPForTarget(MCPConfigTarget target)
@@ -440,6 +435,7 @@ namespace Funplay.Editor.MCP.Server
         {
             var rootKey = string.IsNullOrEmpty(target.RootKey) ? "mcpServers" : target.RootKey;
             var serverName = "funplay";
+            var entry = CreateHttpEntry(target);
             Dictionary<string, object> root;
 
             if (File.Exists(target.ConfigPath))
@@ -452,21 +448,21 @@ namespace Funplay.Editor.MCP.Server
                     root = parsed;
                     var servers = root[rootKey] as Dictionary<string, object>;
                     if (servers != null)
-                        servers[serverName] = target.Entry;
+                        servers[serverName] = entry;
                     else
-                        root[rootKey] = new Dictionary<string, object> { [serverName] = target.Entry };
+                        root[rootKey] = new Dictionary<string, object> { [serverName] = entry };
                 }
                 else
                 {
                     root = parsed ?? new Dictionary<string, object>();
-                    root[rootKey] = new Dictionary<string, object> { [serverName] = target.Entry };
+                    root[rootKey] = new Dictionary<string, object> { [serverName] = entry };
                 }
             }
             else
             {
                 root = new Dictionary<string, object>
                 {
-                    [rootKey] = new Dictionary<string, object> { [serverName] = target.Entry }
+                    [rootKey] = new Dictionary<string, object> { [serverName] = entry }
                 };
             }
 
@@ -476,6 +472,7 @@ namespace Funplay.Editor.MCP.Server
         private void ConfigureTomlTarget(MCPConfigTarget target)
         {
             var sectionHeader = "[mcp_servers.funplay]";
+            var tomlSection = CreateTomlSection(target);
             var content = File.Exists(target.ConfigPath) ? File.ReadAllText(target.ConfigPath) : "";
 
             if (content.Contains(sectionHeader))
@@ -485,17 +482,85 @@ namespace Funplay.Editor.MCP.Server
                 var afterHeader = startIdx + sectionHeader.Length;
                 var nextSection = content.IndexOf("\n[", afterHeader, StringComparison.Ordinal);
                 var endIdx = nextSection >= 0 ? nextSection : content.Length;
-                content = content.Substring(0, startIdx) + target.TomlSection + content.Substring(endIdx);
+                content = content.Substring(0, startIdx) + tomlSection + content.Substring(endIdx);
             }
             else
             {
                 // Append
                 if (content.Length > 0 && !content.EndsWith("\n"))
                     content += "\n";
-                content += "\n" + target.TomlSection;
+                content += "\n" + tomlSection;
             }
 
             File.WriteAllText(target.ConfigPath, content);
+        }
+
+        private Dictionary<string, object> CreateHttpEntry(MCPConfigTarget target)
+        {
+            var entry = new Dictionary<string, object>
+            {
+                ["url"] = GetServerUrl()
+            };
+
+            if (target.IncludeTypeField)
+                entry["type"] = "http";
+
+            return entry;
+        }
+
+        private string CreateTomlSection(MCPConfigTarget target)
+        {
+            if (!target.IsToml)
+                return string.Empty;
+
+            return $"[mcp_servers.funplay]\nurl = \"{GetServerUrl()}\"\n";
+        }
+
+        private string GetServerUrl()
+        {
+            var port = _mcpServer != null && _mcpServer.IsRunning
+                ? _mcpServer.Port
+                : _settingsController.MCPServerPort;
+            return $"http://127.0.0.1:{port}/";
+        }
+
+        private static string GetUserHomePath()
+        {
+            var homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrEmpty(homePath))
+                return homePath;
+
+            var homeDrive = Environment.GetEnvironmentVariable("HOMEDRIVE");
+            var homeDir = Environment.GetEnvironmentVariable("HOMEPATH");
+            if (!string.IsNullOrEmpty(homeDrive) && !string.IsNullOrEmpty(homeDir))
+                return homeDrive + homeDir;
+
+            return Environment.GetFolderPath(Environment.SpecialFolder.Personal);
+        }
+
+        private static string GetVSCodeConfigPath(string homePath)
+        {
+            switch (Application.platform)
+            {
+                case RuntimePlatform.WindowsEditor:
+                    var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                    if (!string.IsNullOrEmpty(appData))
+                        return Path.Combine(appData, "Code", "User", "mcp.json");
+                    break;
+
+                case RuntimePlatform.OSXEditor:
+                    var macPrimaryPath = Path.Combine(homePath, "Library", "Application Support", "Code", "User", "mcp.json");
+                    var macPrimaryDirectory = Path.GetDirectoryName(macPrimaryPath);
+                    if (File.Exists(macPrimaryPath) || (!string.IsNullOrEmpty(macPrimaryDirectory) && Directory.Exists(macPrimaryDirectory)))
+                        return macPrimaryPath;
+
+                    return Path.Combine(homePath, ".vscode", "mcp.json");
+
+                case RuntimePlatform.LinuxEditor:
+                    return Path.Combine(homePath, ".config", "Code", "User", "mcp.json");
+            }
+
+            return Path.Combine(homePath, ".vscode", "mcp.json");
         }
     }
 }
