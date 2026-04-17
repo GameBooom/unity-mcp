@@ -13,6 +13,7 @@ namespace Funplay.Editor.Settings
         private const string SettingsFileName = "FunplayMcpSettings.json";
         private const int DefaultPort = 8765;
         private const string DefaultToolExportProfile = "core";
+        private const string DefaultSelectedConfigTarget = "Claude Code";
 
         private readonly string _settingsPath;
         private readonly object _lock = new object();
@@ -69,6 +70,20 @@ namespace Funplay.Editor.Settings
             {
                 var normalized = NormalizeToolExportProfile(value);
                 UpdateSettings(data => data.toolExportProfile = normalized);
+            }
+        }
+
+        public string MCPSelectedConfigTarget
+        {
+            get
+            {
+                lock (_lock)
+                    return _settings.selectedConfigTarget;
+            }
+            set
+            {
+                var normalized = NormalizeSelectedConfigTarget(value);
+                UpdateSettings(data => data.selectedConfigTarget = normalized);
             }
         }
 
@@ -145,7 +160,8 @@ namespace Funplay.Editor.Settings
             {
                 enabled = false,
                 port = DefaultPort,
-                toolExportProfile = DefaultToolExportProfile
+                toolExportProfile = DefaultToolExportProfile,
+                selectedConfigTarget = DefaultSelectedConfigTarget
             };
         }
 
@@ -156,11 +172,17 @@ namespace Funplay.Editor.Settings
 
             settings.port = settings.port > 0 ? settings.port : DefaultPort;
             settings.toolExportProfile = NormalizeToolExportProfile(settings.toolExportProfile);
+            settings.selectedConfigTarget = NormalizeSelectedConfigTarget(settings.selectedConfigTarget);
         }
 
         private static string NormalizeToolExportProfile(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? DefaultToolExportProfile : value.Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeSelectedConfigTarget(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? DefaultSelectedConfigTarget : value.Trim();
         }
 
         [Serializable]
@@ -169,6 +191,7 @@ namespace Funplay.Editor.Settings
             public bool enabled = false;
             public int port = DefaultPort;
             public string toolExportProfile = DefaultToolExportProfile;
+            public string selectedConfigTarget = DefaultSelectedConfigTarget;
         }
     }
 }

@@ -52,7 +52,6 @@ https://github.com/FunplayAI/funplay-unity-mcp.git
 **Menu: Funplay → MCP Server** to start the server.
 
 The server starts on `http://127.0.0.1:8765/` by default.
-If that port is already occupied, it automatically picks another free local port and saves it to `UserSettings/FunplayMcpSettings.json`.
 
 ### 3. Configure Your AI Client
 
@@ -60,7 +59,8 @@ Use the built-in **One-Click MCP Configuration** in the `Funplay > MCP Server` w
 
 Select your target client, click **Configure**, and the package writes the recommended MCP config entry for you.
 
-If Unity had to pick a different port, use the endpoint shown in the MCP Server window.
+If you want project-specific AI guidance for the current Unity project, open **Funplay → Project Skills (Experimental)** to choose supported platforms and install built-in plus optional skills.
+
 If you prefer to edit config files manually, use the examples below as fallback references:
 
 <details>
@@ -175,7 +175,7 @@ Open your AI client and try: *"Create a 3D platformer level with 5 floating plat
 ## Before You Start
 
 - This package is **Editor-only**. It does not add runtime components to your built game.
-- The MCP server starts on `http://127.0.0.1:8765/` by default, but automatically falls back to another free local port if needed.
+- The MCP server starts on `http://127.0.0.1:8765/` by default.
 - Local MCP server settings are stored in `UserSettings/FunplayMcpSettings.json`.
 - The package defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` currently exposes 19 high-signal tools centered on `execute_code`, play mode control, input simulation, screenshots, performance inspection, logs, and compilation checks. Switch to `full` in the MCP Server window if you want all 79 tools exposed.
 - All exposed MCP tools run directly. There is no extra approval toggle.
@@ -197,6 +197,7 @@ Open your AI client and try: *"Create a 3D platformer level with 5 floating plat
 - **Input Simulation + Screenshots** — Drive play mode with keyboard/mouse simulation and verify results with game/scene captures
 - **Built-in Updating** — Check for updates from the Unity menu and either re-pull the Git package or auto-import the latest `unitypackage`
 - **One-Click Client Configuration** — Generate MCP config entries for Claude Code, Cursor, VS Code, Kiro, Trae, Codex, and similar clients directly from the Unity window
+- **Project Skills Manager (Experimental)** — Configure project-level skills for supported AI clients, with built-in skills plus optional installable skills
 - **Vendor Agnostic** — Works with any AI client that supports MCP: Claude Code, Cursor, Windsurf, Codex, VS Code Copilot, etc.
 
 ## Comparison With Coplay

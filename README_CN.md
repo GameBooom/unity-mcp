@@ -52,7 +52,6 @@ https://github.com/FunplayAI/funplay-unity-mcp.git
 **菜单：Funplay → MCP Server** 启动服务。
 
 默认从 `http://127.0.0.1:8765/` 启动。
-如果该端口已被占用，插件会自动选择另一个可用本地端口，并写回 `UserSettings/FunplayMcpSettings.json`。
 
 ### 3. 配置 AI 客户端
 
@@ -60,7 +59,8 @@ https://github.com/FunplayAI/funplay-unity-mcp.git
 
 选择目标客户端后点击 **Configure**，插件会直接帮你写入推荐的 MCP 配置项。
 
-如果 Unity 自动切到了其他端口，请以 MCP Server 窗口里显示的 endpoint 为准。
+如果你希望为当前 Unity 项目配置项目级 AI 指引，可以打开 **Funplay → Project Skills (Experimental)**，为支持的平台安装内置 skills 和可选 skills。
+
 如果你更想手动编辑配置文件，再参考下面这些示例：
 
 <details>
@@ -177,7 +177,7 @@ url = "http://127.0.0.1:8765/"
 ## 开始前说明
 
 - 这是一个 **仅限 Editor** 的包，不会向最终构建产物添加运行时代码。
-- MCP Server 默认从 `http://127.0.0.1:8765/` 启动；如果端口被占用，会自动切换到其他可用本地端口。
+- MCP Server 默认从 `http://127.0.0.1:8765/` 启动。
 - 本地 MCP Server 配置保存在 `UserSettings/FunplayMcpSettings.json`。
 - 插件默认使用 `core` MCP 工具暴露配置，减少 AI 客户端的工具噪音；`core` 当前暴露 19 个高频工具，以 `execute_code`、运行模式控制、输入模拟、截图、性能检查、日志和编译检查为主。如果你需要完整工具集，可在 MCP Server 窗口切换到 `full`，暴露全部 79 个工具。
 - 所有已暴露的 MCP 工具都会直接执行，不再提供额外的 approval 开关。
@@ -199,6 +199,7 @@ url = "http://127.0.0.1:8765/"
 - **输入模拟 + 截图验证** — 在 Play Mode 中模拟键盘/鼠标，再用 Game View / Scene View 截图验证结果
 - **内置更新** — 直接在 Unity 菜单中检查更新，并根据安装方式自动重新拉取 Git 包或导入最新 `unitypackage`
 - **一键客户端配置** — 直接在 Unity 窗口里为 Claude Code、Cursor、VS Code、Kiro、Trae、Codex 等客户端生成 MCP 配置
+- **项目 Skills 管理器（实验性）** — 为支持的 AI 客户端配置项目级 skills，包含内置 skills 和可选安装 skills
 - **厂商无关** — 兼容任意支持 MCP 的 AI 客户端：Claude Code、Cursor、Windsurf、Codex、VS Code Copilot 等
 
 ## 与 Coplay 的对比

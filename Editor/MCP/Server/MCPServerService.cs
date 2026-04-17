@@ -1,8 +1,6 @@
 // Copyright (C) Funplay. Licensed under MIT.
 
 using System;
-using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Funplay.Editor.MCP;
@@ -190,79 +188,12 @@ namespace Funplay.Editor.MCP.Server
         private int ResolveStartupPort()
         {
             var configuredPort = NormalizePort(_settings.MCPServerPort);
-            if (IsPortAvailable(configuredPort))
-                return configuredPort;
-
-            var fallbackPort = FindAvailablePort();
-            if (fallbackPort <= 0)
-            {
-                Debug.LogWarning(
-                    $"[Funplay MCP Server] Configured port {configuredPort} is unavailable and no fallback port was found. Retrying configured port.");
-                return configuredPort;
-            }
-
-            Debug.LogWarning(
-                $"[Funplay MCP Server] Port {configuredPort} is already in use. Falling back to available port {fallbackPort}.");
-
-            if (_settings.MCPServerPort != fallbackPort)
-                _settings.MCPServerPort = fallbackPort;
-
-            return fallbackPort;
+            return configuredPort;
         }
 
         private static int NormalizePort(int port)
         {
             return port > 0 ? port : 8765;
-        }
-
-        private static bool IsPortAvailable(int port)
-        {
-            TcpListener listener = null;
-            try
-            {
-                listener = new TcpListener(IPAddress.Loopback, port);
-                listener.Start();
-                return true;
-            }
-            catch (SocketException)
-            {
-                return false;
-            }
-            finally
-            {
-                try
-                {
-                    listener?.Stop();
-                }
-                catch
-                {
-                }
-            }
-        }
-
-        private static int FindAvailablePort()
-        {
-            TcpListener listener = null;
-            try
-            {
-                listener = new TcpListener(IPAddress.Loopback, 0);
-                listener.Start();
-                return ((IPEndPoint)listener.LocalEndpoint).Port;
-            }
-            catch
-            {
-                return -1;
-            }
-            finally
-            {
-                try
-                {
-                    listener?.Stop();
-                }
-                catch
-                {
-                }
-            }
         }
 
         private void ScheduleRestart()

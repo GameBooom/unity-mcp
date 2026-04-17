@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.10] - 2026-04-17
+
+### Added
+- Added `Funplay > Project Skills (Experimental)` as a dedicated window for project-level skills setup
+- Added built-in and optional project skills management for supported AI clients, with per-platform generated file visibility
+- Added persistence for the currently selected one-click configuration target so related tools stay aligned across sessions
+
+### Changed
+- Moved project skills management out of the MCP Server window into its own dedicated menu entry
+- Improved the Project Skills window layout with clearer sections and installed-file visibility
+- Removed automatic port fallback so the MCP server now starts only on the configured port
+- Replaced Unity editor star-prompt emoji with plain text for better font compatibility across Unity versions
+
 ## [0.1.9] - 2026-04-16
 
 ### Fixed

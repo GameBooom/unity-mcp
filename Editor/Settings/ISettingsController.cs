@@ -9,6 +9,7 @@ namespace Funplay.Editor.Settings
         bool MCPServerEnabled { get; set; }
         int MCPServerPort { get; set; }
         string MCPToolExportProfile { get; set; }
+        string MCPSelectedConfigTarget { get; set; }
 
         event Action OnSettingsChanged;
     }
