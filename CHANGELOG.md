@@ -1,9 +1,26 @@
 # Changelog
 
+## Unreleased
+
+## [0.2.0] - 2026-04-30
+
+### Changed
+- Limited Project Skills to the verified default `unity-mcp-workflow` skill and removed unverified optional skills from the catalog.
+- Moved Codex project skill installation from `.agents/skills/` to project-root `.codex/skills/`.
+- Moved Claude project skill installation from `.claude/commands/` to project-root `.claude/skills/`.
+- Renamed Project Skills to use the final feature name across UI and docs.
+- Added a one-click `Configure + Skills` action for supported MCP clients.
+- Added `Funplay > Tool Exposure` for editing which tools `core` and `full` expose.
+- Grouped the Tool Exposure editor by tool category with per-category selection controls.
+- Updated the default Unity MCP workflow skill to cover default `core`, default `full`, and customized tool exposure.
+- Rendered screenshot tool results as image previews in Recent Activity.
+- Added `Funplay > Plugin Settings` with a toggle for verbose plugin debug logging.
+- Enabled plugin debug logging by default and expanded the default Unity MCP workflow skill with safer scene, prefab, and readback validation guidance.
+
 ## [0.1.10] - 2026-04-17
 
 ### Added
-- Added `Funplay > Project Skills (Experimental)` as a dedicated window for project-level skills setup
+- Added `Funplay > Project Skills` as a dedicated window for project-level skills setup
 - Added built-in and optional project skills management for supported AI clients, with per-platform generated file visibility
 - Added persistence for the currently selected one-click configuration target so related tools stay aligned across sessions
 

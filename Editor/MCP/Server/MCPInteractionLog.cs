@@ -17,10 +17,13 @@ namespace Funplay.Editor.MCP.Server
         public string ToolName;
         public MCPToolCallStatus Status;
         public string ResultSummary;
+        public string ImageDataUri;
     }
 
     internal class MCPInteractionLog
     {
+        private const string ImageDataUriPrefix = "data:image/png;base64,";
+
         private readonly MCPLogEntry[] _buffer;
         private int _head;
         private int _count;
@@ -35,14 +38,21 @@ namespace Funplay.Editor.MCP.Server
 
         public void Add(string toolName, MCPToolCallStatus status, string resultSummary)
         {
+            var imageDataUri = resultSummary != null && resultSummary.StartsWith(ImageDataUriPrefix, StringComparison.Ordinal)
+                ? resultSummary
+                : null;
+
             var entry = new MCPLogEntry
             {
                 Timestamp = DateTime.Now,
                 ToolName = toolName,
                 Status = status,
-                ResultSummary = resultSummary != null && resultSummary.Length > 200
+                ResultSummary = imageDataUri != null
+                    ? "Screenshot captured successfully."
+                    : resultSummary != null && resultSummary.Length > 200
                     ? resultSummary.Substring(0, 197) + "..."
-                    : resultSummary ?? ""
+                    : resultSummary ?? "",
+                ImageDataUri = imageDataUri
             };
 
             lock (_lock)

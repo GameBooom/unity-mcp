@@ -65,7 +65,13 @@ namespace Funplay.Editor.MCP.Server
                     }
 
                     var profile = MCPToolExportPolicy.Parse(_settings.MCPToolExportProfile);
-                    if (!MCPToolExportPolicy.IsToolAllowed(toolName, profile))
+                    if (!MCPToolExportPolicy.IsToolAllowed(
+                            toolName,
+                            profile,
+                            _settings.MCPCoreToolsConfigured,
+                            _settings.MCPCoreTools,
+                            _settings.MCPFullToolsConfigured,
+                            _settings.MCPFullTools))
                     {
                         return $"Error: Tool '{toolName}' is not exposed by the current MCP tool profile '{MCPToolExportPolicy.ToSettingValue(profile)}'.";
                     }
@@ -77,7 +83,7 @@ namespace Funplay.Editor.MCP.Server
                     _stateController.SetState(FunplayState.ExecutingFunction);
                     DomainReloadHandler.SavePendingFunction(functionCall);
 
-                    Debug.Log($"[Funplay MCP Server] Executing tool: {toolName}");
+                    PluginDebugLogger.Log($"[Funplay MCP Server] Executing tool: {toolName}");
                     var result = await _invoker.InvokeAsync(functionCall);
                     DomainReloadHandler.ClearPendingFunction();
                     _stateController.ReturnToPreviousState();

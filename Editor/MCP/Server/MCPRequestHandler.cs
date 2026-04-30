@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Funplay.Editor.Settings;
 using UnityEngine;
 
 namespace Funplay.Editor.MCP.Server
@@ -46,7 +47,7 @@ namespace Funplay.Editor.MCP.Server
                 if (request.JsonRpc != "2.0")
                     return CreateErrorResponse(request.Id, -32600, "Invalid Request: jsonrpc must be '2.0'");
 
-                Debug.Log($"[Funplay MCP Server] Handling request: {request.Method}");
+                PluginDebugLogger.Log($"[Funplay MCP Server] Handling request: {request.Method}");
 
                 return request.Method switch
                 {
@@ -89,14 +90,14 @@ namespace Funplay.Editor.MCP.Server
                 }
             };
 
-            Debug.Log("[Funplay MCP Server] Initialized successfully");
+            PluginDebugLogger.Log("[Funplay MCP Server] Initialized successfully");
             return new MCPResponse { Id = request.Id, Result = result };
         }
 
         private MCPResponse HandleToolsList(MCPRequest request)
         {
             var tools = _toolExporter.ExportTools();
-            Debug.Log($"[Funplay MCP Server] Returning {tools.Count} tools");
+            PluginDebugLogger.Log($"[Funplay MCP Server] Returning {tools.Count} tools");
 
             return new MCPResponse
             {
@@ -116,7 +117,7 @@ namespace Funplay.Editor.MCP.Server
                     ? args
                     : new Dictionary<string, object>();
 
-                Debug.Log($"[Funplay MCP Server] Calling tool: {toolName}");
+                PluginDebugLogger.Log($"[Funplay MCP Server] Calling tool: {toolName}");
                 var result = await _executionBridge.ExecuteToolAsync(toolName, arguments, ct);
 
                 return new MCPResponse

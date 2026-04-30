@@ -4,11 +4,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Funplay.Editor.DI;
 using Funplay.Editor.Settings;
+using Funplay.Editor.Tools;
 
 namespace Funplay.Editor.MCP.Server
 {
@@ -23,6 +25,7 @@ namespace Funplay.Editor.MCP.Server
         private int _selectedTargetIndex;
         private Label _configStatusLabel;
         private Label _configPathLabel;
+        private readonly List<Texture2D> _logPreviewTextures = new List<Texture2D>();
 
         [MenuItem("Funplay/MCP Server")]
         public static void ShowWindow()
@@ -53,6 +56,8 @@ namespace Funplay.Editor.MCP.Server
         {
             if (_mcpServer?.InteractionLog != null)
                 _mcpServer.InteractionLog.OnEntryAdded -= OnLogEntryAdded;
+
+            ClearLogPreviewTextures();
         }
 
         private void BuildUI()
@@ -220,7 +225,32 @@ namespace Funplay.Editor.MCP.Server
             configBtn.style.color = Color.white;
             configRow.Add(configBtn);
 
+            var selectedTarget = _mcpTargets[_selectedTargetIndex];
+            var skillsSupported = !string.IsNullOrEmpty(MapTargetNameToSkillsPlatformId(selectedTarget.Name));
+            var configWithSkillsBtn = new Button(() =>
+            {
+                ConfigureMCPAndSkillsForTarget(_mcpTargets[_selectedTargetIndex]);
+                RefreshConfigStatus();
+            });
+            configWithSkillsBtn.text = "Configure + Skills";
+            configWithSkillsBtn.style.height = 26;
+            configWithSkillsBtn.style.width = 130;
+            configWithSkillsBtn.style.marginLeft = 4;
+            configWithSkillsBtn.style.backgroundColor = new Color(0.25f, 0.45f, 0.65f);
+            configWithSkillsBtn.style.color = Color.white;
+            configWithSkillsBtn.SetEnabled(skillsSupported);
+            configRow.Add(configWithSkillsBtn);
+
             _mainContainer.Add(configRow);
+
+            var skillsHint = new Label(skillsSupported
+                ? "Configure + Skills also installs the project MCP workflow skill."
+                : "Project skills are currently available for Claude Code, Cursor, and Codex.");
+            skillsHint.style.fontSize = 10;
+            skillsHint.style.color = new Color(0.6f, 0.6f, 0.6f);
+            skillsHint.style.marginBottom = 4;
+            skillsHint.style.whiteSpace = WhiteSpace.Normal;
+            _mainContainer.Add(skillsHint);
 
             _configStatusLabel = new Label();
             _configStatusLabel.style.fontSize = 11;
@@ -242,6 +272,8 @@ namespace Funplay.Editor.MCP.Server
 
         private void BuildLogSection()
         {
+            ClearLogPreviewTextures();
+
             var logHeader = new VisualElement();
             logHeader.style.flexDirection = FlexDirection.Row;
             logHeader.style.alignItems = Align.Center;
@@ -258,6 +290,7 @@ namespace Funplay.Editor.MCP.Server
             var clearBtn = new Button(() =>
             {
                 _mcpServer.InteractionLog.Clear();
+                ClearLogPreviewTextures();
                 _logScrollView.contentContainer.Clear();
             });
             clearBtn.text = "Clear";
@@ -351,7 +384,60 @@ namespace Funplay.Editor.MCP.Server
                 card.Add(summaryLabel);
             }
 
+            if (!string.IsNullOrEmpty(entry.ImageDataUri) && TryCreateImagePreview(entry.ImageDataUri, out var preview))
+                card.Add(preview);
+
             _logScrollView.contentContainer.Add(card);
+        }
+
+        private bool TryCreateImagePreview(string imageDataUri, out Image preview)
+        {
+            preview = null;
+            const string prefix = "data:image/png;base64,";
+            if (string.IsNullOrEmpty(imageDataUri) || !imageDataUri.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            try
+            {
+                var bytes = Convert.FromBase64String(imageDataUri.Substring(prefix.Length));
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!texture.LoadImage(bytes))
+                {
+                    UnityEngine.Object.DestroyImmediate(texture);
+                    return false;
+                }
+
+                _logPreviewTextures.Add(texture);
+
+                preview = new Image
+                {
+                    image = texture,
+                    scaleMode = ScaleMode.ScaleToFit
+                };
+                preview.style.height = 150;
+                preview.style.marginTop = 6;
+                preview.style.backgroundColor = new Color(0.1f, 0.1f, 0.1f);
+                preview.style.borderTopLeftRadius = 3;
+                preview.style.borderTopRightRadius = 3;
+                preview.style.borderBottomLeftRadius = 3;
+                preview.style.borderBottomRightRadius = 3;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void ClearLogPreviewTextures()
+        {
+            foreach (var texture in _logPreviewTextures)
+            {
+                if (texture != null)
+                    UnityEngine.Object.DestroyImmediate(texture);
+            }
+
+            _logPreviewTextures.Clear();
         }
 
         private void OnLogEntryAdded(MCPLogEntry entry)
@@ -411,18 +497,7 @@ namespace Funplay.Editor.MCP.Server
         {
             try
             {
-                var dir = Path.GetDirectoryName(target.ConfigPath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
-                if (target.IsToml)
-                {
-                    ConfigureTomlTarget(target);
-                }
-                else
-                {
-                    ConfigureJsonTarget(target);
-                }
+                WriteMCPConfigurationForTarget(target);
 
                 EditorUtility.DisplayDialog(
                     "MCP Configuration",
@@ -439,6 +514,90 @@ namespace Funplay.Editor.MCP.Server
                     $"Configuration failed:\n{ex.Message}",
                     "OK");
             }
+        }
+
+        private void ConfigureMCPAndSkillsForTarget(MCPConfigTarget target)
+        {
+            try
+            {
+                WriteMCPConfigurationForTarget(target);
+
+                var platformId = MapTargetNameToSkillsPlatformId(target.Name);
+                if (string.IsNullOrEmpty(platformId))
+                {
+                    EditorUtility.DisplayDialog(
+                        "MCP Configuration",
+                        $"MCP configuration written to:\n{target.ConfigPath}\n\n" +
+                        "Project skills are currently available for Claude Code, Cursor, and Codex.",
+                        "OK");
+
+                    BuildUI();
+                    return;
+                }
+
+                if (!ConfigureProjectSkillsForPlatform(platformId))
+                    return;
+
+                var projectRoot = GetProjectRootPath();
+                var manifest = ProjectSkillsManager.LoadManifest(projectRoot);
+                var generatedPaths = ProjectSkillsManager.GetGeneratedPathsForPlatform(projectRoot, manifest, platformId);
+
+                EditorUtility.DisplayDialog(
+                    "MCP Configuration",
+                    $"MCP configuration written to:\n{target.ConfigPath}\n\n" +
+                    "Project MCP workflow skill installed:\n" +
+                    string.Join("\n", generatedPaths),
+                    "OK");
+
+                BuildUI();
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog(
+                    "MCP Configuration Error",
+                    $"Configuration failed:\n{ex.Message}",
+                    "OK");
+            }
+        }
+
+        private void WriteMCPConfigurationForTarget(MCPConfigTarget target)
+        {
+            var dir = Path.GetDirectoryName(target.ConfigPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            if (target.IsToml)
+                ConfigureTomlTarget(target);
+            else
+                ConfigureJsonTarget(target);
+        }
+
+        private bool ConfigureProjectSkillsForPlatform(string platformId)
+        {
+            var projectRoot = GetProjectRootPath();
+            var manifest = ProjectSkillsManager.LoadManifest(projectRoot);
+            var selectedPlatforms = new HashSet<string>(manifest.platforms, StringComparer.OrdinalIgnoreCase)
+            {
+                platformId
+            };
+
+            var conflictPaths = ProjectSkillsManager.GetPlatformConflictPaths(projectRoot, selectedPlatforms);
+            if (conflictPaths.Length > 0)
+            {
+                var overwrite = EditorUtility.DisplayDialog(
+                    "Project Skills Configuration",
+                    "Existing non-managed project instruction files were found:\n\n" +
+                    string.Join("\n", conflictPaths) +
+                    "\n\nOverwrite them with Funplay-managed files?",
+                    "Overwrite",
+                    "Cancel");
+
+                if (!overwrite)
+                    return false;
+            }
+
+            ProjectSkillsManager.ApplyConfiguration(projectRoot, selectedPlatforms, manifest.optionalSkills);
+            return true;
         }
 
         private void ConfigureJsonTarget(MCPConfigTarget target)
@@ -539,6 +698,21 @@ namespace Funplay.Editor.MCP.Server
             return Path.GetDirectoryName(Application.dataPath) ?? Application.dataPath;
         }
 
+        private static string MapTargetNameToSkillsPlatformId(string targetName)
+        {
+            switch (targetName?.Trim())
+            {
+                case "Codex":
+                    return "codex";
+                case "Claude Code":
+                    return "claude";
+                case "Cursor":
+                    return "cursor";
+                default:
+                    return null;
+            }
+        }
+
         private static string GetUserHomePath()
         {
             var homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -579,6 +753,556 @@ namespace Funplay.Editor.MCP.Server
         }
     }
 
+    internal class FunplayPluginSettingsWindow : EditorWindow
+    {
+        private ISettingsController _settingsController;
+        private Toggle _debugLoggingToggle;
+        private Label _debugStatusLabel;
+
+        [MenuItem("Funplay/Plugin Settings")]
+        public static void ShowWindow()
+        {
+            var window = GetWindow<FunplayPluginSettingsWindow>("Plugin Settings");
+            window.minSize = new Vector2(360, 220);
+            window.Show();
+        }
+
+        public void CreateGUI()
+        {
+            _settingsController = RootScopeServices.Services?.GetService(typeof(ISettingsController))
+                as ISettingsController;
+
+            if (_settingsController == null)
+            {
+                rootVisualElement.Add(new Label("Failed to initialize services."));
+                return;
+            }
+
+            _settingsController.OnSettingsChanged += RefreshStatus;
+            BuildUI();
+        }
+
+        private void OnDestroy()
+        {
+            if (_settingsController != null)
+                _settingsController.OnSettingsChanged -= RefreshStatus;
+        }
+
+        private void BuildUI()
+        {
+            rootVisualElement.Clear();
+            rootVisualElement.style.flexGrow = 1;
+            rootVisualElement.style.backgroundColor = new Color(0.18f, 0.18f, 0.18f);
+            rootVisualElement.style.paddingLeft = 10;
+            rootVisualElement.style.paddingRight = 10;
+            rootVisualElement.style.paddingTop = 10;
+            rootVisualElement.style.paddingBottom = 10;
+
+            var title = new Label("Plugin Settings");
+            title.style.fontSize = 17;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = Color.white;
+            title.style.marginBottom = 4;
+            rootVisualElement.Add(title);
+
+            var hint = new Label("Project-level settings for the Funplay Unity MCP plugin. Debug logging is enabled by default.");
+            hint.style.fontSize = 11;
+            hint.style.color = new Color(0.65f, 0.65f, 0.65f);
+            hint.style.whiteSpace = WhiteSpace.Normal;
+            hint.style.marginBottom = 10;
+            rootVisualElement.Add(hint);
+
+            var debugSection = CreateSection();
+            debugSection.Add(CreateSectionHeader("Debug"));
+
+            _debugLoggingToggle = new Toggle("Enable debug logging");
+            _debugLoggingToggle.SetValueWithoutNotify(_settingsController.PluginDebugLoggingEnabled);
+            _debugLoggingToggle.style.marginBottom = 5;
+            _debugLoggingToggle.RegisterValueChangedCallback(evt =>
+            {
+                _settingsController.PluginDebugLoggingEnabled = evt.newValue;
+                RefreshStatus();
+            });
+            debugSection.Add(_debugLoggingToggle);
+
+            _debugStatusLabel = CreateHint(string.Empty);
+            debugSection.Add(_debugStatusLabel);
+
+            rootVisualElement.Add(debugSection);
+            RefreshStatus();
+        }
+
+        private void RefreshStatus()
+        {
+            if (_settingsController == null)
+                return;
+
+            var enabled = _settingsController.PluginDebugLoggingEnabled;
+            if (_debugLoggingToggle != null)
+                _debugLoggingToggle.SetValueWithoutNotify(enabled);
+
+            if (_debugStatusLabel != null)
+            {
+                _debugStatusLabel.text = enabled
+                    ? "Debug logging is enabled. Plugin lifecycle, MCP request, transport, and tool execution traces are written to the Unity Console."
+                    : "Debug logging is disabled. Warnings and errors are still written to the Unity Console.";
+                _debugStatusLabel.style.color = enabled
+                    ? new Color(0.55f, 0.85f, 0.55f)
+                    : new Color(0.65f, 0.65f, 0.65f);
+            }
+        }
+
+        private static VisualElement CreateSection()
+        {
+            var section = new VisualElement();
+            section.style.backgroundColor = new Color(0.14f, 0.14f, 0.14f);
+            section.style.borderTopLeftRadius = 4;
+            section.style.borderTopRightRadius = 4;
+            section.style.borderBottomLeftRadius = 4;
+            section.style.borderBottomRightRadius = 4;
+            section.style.paddingLeft = 8;
+            section.style.paddingRight = 8;
+            section.style.paddingTop = 8;
+            section.style.paddingBottom = 8;
+            return section;
+        }
+
+        private static Label CreateSectionHeader(string text)
+        {
+            var label = new Label(text);
+            label.style.fontSize = 12;
+            label.style.unityFontStyleAndWeight = FontStyle.Bold;
+            label.style.color = new Color(0.78f, 0.78f, 0.78f);
+            label.style.marginBottom = 6;
+            return label;
+        }
+
+        private static Label CreateHint(string text)
+        {
+            var label = new Label(text);
+            label.style.fontSize = 11;
+            label.style.color = new Color(0.65f, 0.65f, 0.65f);
+            label.style.whiteSpace = WhiteSpace.Normal;
+            return label;
+        }
+    }
+
+    internal class FunplayToolExposureWindow : EditorWindow
+    {
+        private static readonly List<string> ProfileChoices = new List<string> { "core", "full" };
+
+        private ISettingsController _settingsController;
+        private MCPServerService _mcpServer;
+        private PopupField<string> _editProfileField;
+        private Label _statusLabel;
+        private Label _descriptionLabel;
+        private ScrollView _toolScrollView;
+        private List<string> _allToolNames = new List<string>();
+        private readonly Dictionary<string, string> _toolCategories = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Toggle> _toolToggles = new Dictionary<string, Toggle>(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> _editingTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private string _editingProfile = "core";
+
+        [MenuItem("Funplay/Tool Exposure")]
+        public static void ShowWindow()
+        {
+            var window = GetWindow<FunplayToolExposureWindow>("Tool Exposure");
+            window.minSize = new Vector2(460, 560);
+            window.Show();
+        }
+
+        public void CreateGUI()
+        {
+            _settingsController = RootScopeServices.Services?.GetService(typeof(ISettingsController))
+                as ISettingsController;
+            _mcpServer = RootScopeServices.Services?.GetService(typeof(MCPServerService))
+                as MCPServerService;
+
+            if (_settingsController == null)
+            {
+                rootVisualElement.Add(new Label("Failed to initialize services."));
+                return;
+            }
+
+            _settingsController.OnSettingsChanged += RefreshStatus;
+            BuildUI();
+        }
+
+        private void OnDestroy()
+        {
+            if (_settingsController != null)
+                _settingsController.OnSettingsChanged -= RefreshStatus;
+        }
+
+        private void BuildUI()
+        {
+            rootVisualElement.Clear();
+            rootVisualElement.style.flexGrow = 1;
+            rootVisualElement.style.backgroundColor = new Color(0.18f, 0.18f, 0.18f);
+            rootVisualElement.style.paddingLeft = 10;
+            rootVisualElement.style.paddingRight = 10;
+            rootVisualElement.style.paddingTop = 10;
+            rootVisualElement.style.paddingBottom = 10;
+
+            var title = new Label("Tool Exposure");
+            title.style.fontSize = 17;
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.style.color = Color.white;
+            title.style.marginBottom = 4;
+            rootVisualElement.Add(title);
+
+            var hint = new Label("Edit exactly which tools each MCP profile exposes. Choose the active profile from the MCP Server window. Saving changes restarts the running server automatically.");
+            hint.style.fontSize = 11;
+            hint.style.color = new Color(0.65f, 0.65f, 0.65f);
+            hint.style.whiteSpace = WhiteSpace.Normal;
+            hint.style.marginBottom = 10;
+            rootVisualElement.Add(hint);
+
+            LoadAllTools();
+
+            var activeProfile = GetActiveProfile();
+            _editingProfile = ProfileChoices.Contains(_editingProfile) ? _editingProfile : activeProfile;
+            _editProfileField = new PopupField<string>("Edit Tool List", ProfileChoices, ProfileChoices.IndexOf(_editingProfile));
+            _editProfileField.style.marginBottom = 8;
+            _editProfileField.RegisterValueChangedCallback(evt =>
+            {
+                _editingProfile = evt.newValue;
+                LoadEditingTools();
+                RebuildToolList();
+                RefreshStatus();
+            });
+            rootVisualElement.Add(_editProfileField);
+
+            var buttonRow = new VisualElement();
+            buttonRow.style.flexDirection = FlexDirection.Row;
+            buttonRow.style.marginBottom = 10;
+
+            var selectAllButton = CreateActionButton("Select All", SelectAllTools, 88, new Color(0.24f, 0.42f, 0.58f));
+            buttonRow.Add(selectAllButton);
+
+            var clearButton = CreateActionButton("Clear", ClearTools, 64, new Color(0.46f, 0.36f, 0.24f));
+            clearButton.style.marginLeft = 6;
+            buttonRow.Add(clearButton);
+
+            var defaultButton = CreateActionButton("Use Default", UseDefaultTools, 92, new Color(0.34f, 0.34f, 0.34f));
+            defaultButton.style.marginLeft = 6;
+            buttonRow.Add(defaultButton);
+
+            var saveButton = CreateActionButton("Save", SaveEditingTools, 64, new Color(0.2f, 0.5f, 0.3f));
+            saveButton.style.marginLeft = 6;
+            buttonRow.Add(saveButton);
+
+            rootVisualElement.Add(buttonRow);
+
+            _statusLabel = new Label();
+            _statusLabel.style.fontSize = 11;
+            _statusLabel.style.marginBottom = 6;
+            rootVisualElement.Add(_statusLabel);
+
+            _descriptionLabel = new Label();
+            _descriptionLabel.style.fontSize = 11;
+            _descriptionLabel.style.color = new Color(0.68f, 0.68f, 0.68f);
+            _descriptionLabel.style.whiteSpace = WhiteSpace.Normal;
+            rootVisualElement.Add(_descriptionLabel);
+
+            _toolScrollView = new ScrollView(ScrollViewMode.Vertical);
+            _toolScrollView.style.flexGrow = 1;
+            _toolScrollView.style.backgroundColor = new Color(0.14f, 0.14f, 0.14f);
+            _toolScrollView.style.borderTopLeftRadius = 4;
+            _toolScrollView.style.borderTopRightRadius = 4;
+            _toolScrollView.style.borderBottomLeftRadius = 4;
+            _toolScrollView.style.borderBottomRightRadius = 4;
+            _toolScrollView.style.paddingLeft = 6;
+            _toolScrollView.style.paddingRight = 6;
+            _toolScrollView.style.paddingTop = 5;
+            _toolScrollView.style.paddingBottom = 5;
+            rootVisualElement.Add(_toolScrollView);
+
+            LoadEditingTools();
+            RebuildToolList();
+            RefreshStatus();
+        }
+
+        private Button CreateActionButton(string text, Action action, int width, Color color)
+        {
+            var button = new Button(action);
+            button.text = text;
+            button.style.height = 26;
+            button.style.width = width;
+            button.style.backgroundColor = color;
+            button.style.color = Color.white;
+            return button;
+        }
+
+        private void LoadAllTools()
+        {
+            _toolCategories.Clear();
+
+            _allToolNames = ToolSchemaBuilder.BuildAll()
+                .Select(tool => tool.function.name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var toolName in _allToolNames)
+                _toolCategories[toolName] = GetToolCategory(toolName);
+        }
+
+        private void LoadEditingTools()
+        {
+            _editingTools = new HashSet<string>(GetEffectiveTools(_editingProfile), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private IEnumerable<string> GetEffectiveTools(string profile)
+        {
+            if (string.Equals(profile, "full", StringComparison.OrdinalIgnoreCase))
+            {
+                return _settingsController.MCPFullToolsConfigured
+                    ? _settingsController.MCPFullTools
+                    : _allToolNames;
+            }
+
+            return _settingsController.MCPCoreToolsConfigured
+                ? _settingsController.MCPCoreTools
+                : MCPToolExportPolicy.DefaultCoreTools.Where(tool => _allToolNames.Contains(tool, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private bool IsEditingProfileConfigured()
+        {
+            return string.Equals(_editingProfile, "full", StringComparison.OrdinalIgnoreCase)
+                ? _settingsController.MCPFullToolsConfigured
+                : _settingsController.MCPCoreToolsConfigured;
+        }
+
+        private string GetActiveProfile()
+        {
+            var currentProfile = MCPToolExportPolicy.ToSettingValue(
+                MCPToolExportPolicy.Parse(_settingsController.MCPToolExportProfile));
+            return ProfileChoices.Contains(currentProfile) ? currentProfile : "core";
+        }
+
+        private void RebuildToolList()
+        {
+            if (_toolScrollView == null)
+                return;
+
+            _toolScrollView.contentContainer.Clear();
+            _toolToggles.Clear();
+
+            var groupedTools = _allToolNames
+                .GroupBy(GetCachedToolCategory)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in groupedTools)
+            {
+                var categoryTools = group
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                _toolScrollView.Add(CreateCategorySection(group.Key, categoryTools));
+            }
+        }
+
+        private VisualElement CreateCategorySection(string category, IReadOnlyList<string> categoryTools)
+        {
+            var selectedCount = categoryTools.Count(tool => _editingTools.Contains(tool));
+
+            var foldout = new Foldout
+            {
+                text = $"{category} ({selectedCount}/{categoryTools.Count})",
+                value = true
+            };
+            foldout.style.marginBottom = 5;
+
+            var actions = new VisualElement();
+            actions.style.flexDirection = FlexDirection.Row;
+            actions.style.marginLeft = 16;
+            actions.style.marginTop = 2;
+            actions.style.marginBottom = 4;
+
+            var selectButton = CreateCategoryButton("Select", () => SetCategoryTools(categoryTools, true));
+            actions.Add(selectButton);
+
+            var clearButton = CreateCategoryButton("Clear", () => SetCategoryTools(categoryTools, false));
+            clearButton.style.marginLeft = 4;
+            actions.Add(clearButton);
+
+            foldout.Add(actions);
+
+            foreach (var toolName in categoryTools)
+            {
+                var toggle = new Toggle(toolName);
+                toggle.SetValueWithoutNotify(_editingTools.Contains(toolName));
+                toggle.style.marginLeft = 16;
+                toggle.style.marginBottom = 2;
+                toggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue)
+                        _editingTools.Add(toolName);
+                    else
+                        _editingTools.Remove(toolName);
+
+                    RebuildToolList();
+                    RefreshStatus();
+                });
+
+                _toolToggles[toolName] = toggle;
+                foldout.Add(toggle);
+            }
+
+            return foldout;
+        }
+
+        private Button CreateCategoryButton(string text, Action action)
+        {
+            var button = new Button(action);
+            button.text = text;
+            button.style.height = 20;
+            button.style.width = 58;
+            button.style.fontSize = 10;
+            return button;
+        }
+
+        private void SetCategoryTools(IEnumerable<string> categoryTools, bool enabled)
+        {
+            foreach (var toolName in categoryTools)
+            {
+                if (enabled)
+                    _editingTools.Add(toolName);
+                else
+                    _editingTools.Remove(toolName);
+            }
+
+            RebuildToolList();
+            RefreshStatus();
+        }
+
+        private void SetAllToolToggles(bool enabled)
+        {
+            if (enabled)
+                _editingTools = new HashSet<string>(_allToolNames, StringComparer.OrdinalIgnoreCase);
+            else
+                _editingTools.Clear();
+
+            foreach (var entry in _toolToggles)
+                entry.Value.SetValueWithoutNotify(_editingTools.Contains(entry.Key));
+
+            RefreshStatus();
+        }
+
+        private void SelectAllTools()
+        {
+            SetAllToolToggles(true);
+        }
+
+        private void ClearTools()
+        {
+            SetAllToolToggles(false);
+        }
+
+        private void UseDefaultTools()
+        {
+            if (string.Equals(_editingProfile, "full", StringComparison.OrdinalIgnoreCase))
+                _settingsController.MCPFullTools = null;
+            else
+                _settingsController.MCPCoreTools = null;
+
+            LoadEditingTools();
+            RebuildToolList();
+            RefreshStatus();
+        }
+
+        private void SaveEditingTools()
+        {
+            var selected = _editingTools
+                .Where(tool => _allToolNames.Contains(tool, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(tool => tool, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (string.Equals(_editingProfile, "full", StringComparison.OrdinalIgnoreCase))
+                _settingsController.MCPFullTools = selected;
+            else
+                _settingsController.MCPCoreTools = selected;
+
+            RefreshStatus();
+        }
+
+        private void RefreshStatus()
+        {
+            if (_settingsController == null)
+                return;
+
+            var activeProfile = GetActiveProfile();
+            if (_editProfileField != null)
+                _editProfileField.SetValueWithoutNotify(_editingProfile);
+
+            var selectedCount = _editingTools?.Count ?? 0;
+            var totalCount = _allToolNames?.Count ?? 0;
+            var source = IsEditingProfileConfigured() ? "custom" : "default";
+
+            if (_statusLabel != null)
+            {
+                var serverState = _mcpServer != null && _mcpServer.IsRunning
+                    ? $"Server running on http://127.0.0.1:{_mcpServer.Port}/"
+                    : "Server stopped";
+                _statusLabel.text = $"Active: {activeProfile} | Editing {_editingProfile}: {selectedCount}/{totalCount} tools ({source}) | {serverState}";
+                _statusLabel.style.color = activeProfile == "core"
+                    ? new Color(0.55f, 0.85f, 0.55f)
+                    : new Color(0.55f, 0.75f, 1f);
+            }
+
+            if (_descriptionLabel != null)
+            {
+                _descriptionLabel.text = string.Equals(_editingProfile, "core", StringComparison.OrdinalIgnoreCase)
+                    ? "core defaults to the focused Unity workflow tool set. Select tools below and click Save to override that list."
+                    : "full defaults to every registered MCP tool. Select tools below and click Save to make full expose only that custom list.";
+            }
+        }
+
+        private string GetCachedToolCategory(string toolName)
+        {
+            return _toolCategories.TryGetValue(toolName, out var category) ? category : "Other";
+        }
+
+        private string GetToolCategory(string toolName)
+        {
+            if (ToolRegistry.MethodCache.TryGetValue(toolName, out var method))
+            {
+                var provider = method.DeclaringType?.GetCustomAttribute<ToolProviderAttribute>();
+                return FormatCategory(provider?.Category ?? method.DeclaringType?.Name ?? "Other");
+            }
+
+            if (ToolRegistry.ManualTools.ContainsKey(toolName))
+                return "Manual";
+
+            return "Other";
+        }
+
+        private static string FormatCategory(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category))
+                return "Other";
+
+            var trimmed = category.Trim();
+            var result = new System.Text.StringBuilder();
+            for (var i = 0; i < trimmed.Length; i++)
+            {
+                var current = trimmed[i];
+                if (i > 0 &&
+                    char.IsUpper(current) &&
+                    !char.IsWhiteSpace(trimmed[i - 1]) &&
+                    (char.IsLower(trimmed[i - 1]) || (i + 1 < trimmed.Length && char.IsLower(trimmed[i + 1]))))
+                {
+                    result.Append(' ');
+                }
+
+                result.Append(current);
+            }
+
+            return result.ToString();
+        }
+    }
+
     internal class FunplayProjectSkillsWindow : EditorWindow
     {
         private readonly Dictionary<string, Toggle> _optionalSkillToggles = new Dictionary<string, Toggle>(StringComparer.OrdinalIgnoreCase);
@@ -592,10 +1316,10 @@ namespace Funplay.Editor.MCP.Server
         private string[] _platformTargets;
         private int _selectedTargetIndex;
 
-        [MenuItem("Funplay/Project Skills (Experimental)")]
+        [MenuItem("Funplay/Project Skills")]
         public static void ShowWindow()
         {
-            var window = GetWindow<FunplayProjectSkillsWindow>("Project Skills (Experimental)");
+            var window = GetWindow<FunplayProjectSkillsWindow>("Project Skills");
             window.minSize = new Vector2(420, 520);
             window.Show();
         }
@@ -630,14 +1354,14 @@ namespace Funplay.Editor.MCP.Server
 
             var header = CreateSection();
             header.style.marginBottom = 10;
-            var title = new Label("Project Skills (Experimental)");
+            var title = new Label("Project Skills");
             title.style.fontSize = 17;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             title.style.color = Color.white;
             title.style.marginBottom = 4;
             header.Add(title);
 
-            var hintLabel = new Label("Experimental: configure project-level skills for supported AI clients. Built-in skills are always installed. Optional skills can be added or removed.");
+            var hintLabel = new Label("Configure project-level skills for supported AI clients. Built-in skills are always installed. Optional skills will be added after verification.");
             hintLabel.style.fontSize = 11;
             hintLabel.style.color = new Color(0.65f, 0.65f, 0.65f);
             hintLabel.style.whiteSpace = WhiteSpace.Normal;
@@ -721,7 +1445,8 @@ namespace Funplay.Editor.MCP.Server
             var optionalSection = CreateSection();
             optionalSection.Add(CreateSectionHeader("Optional Skills"));
 
-            foreach (var skill in ProjectSkillsManager.GetOptionalSkills())
+            var optionalSkills = ProjectSkillsManager.GetOptionalSkills();
+            foreach (var skill in optionalSkills)
             {
                 var toggle = new Toggle(skill.Title);
                 toggle.SetValueWithoutNotify(manifest.optionalSkills.Contains(skill.Id, StringComparer.OrdinalIgnoreCase));
@@ -737,7 +1462,10 @@ namespace Funplay.Editor.MCP.Server
                 _optionalSkillToggles[skill.Id] = toggle;
             }
 
-            optionalSection.Add(CreateHint("Uncheck optional skills and click Apply Skills to remove them. Built-in skills cannot be removed.", new Color(0.65f, 0.65f, 0.65f)));
+            var optionalHint = optionalSkills.Count > 0
+                ? "Uncheck optional skills and click Apply Skills to remove them. Built-in skills cannot be removed."
+                : "No optional skills are available yet. Additional skills will be added after verification.";
+            optionalSection.Add(CreateHint(optionalHint, new Color(0.65f, 0.65f, 0.65f)));
             _mainContainer.Add(optionalSection);
         }
 
@@ -809,6 +1537,8 @@ namespace Funplay.Editor.MCP.Server
             var currentPlatformSupported = !string.IsNullOrEmpty(currentPlatformId);
             var currentPlatformConfigured = currentPlatformSupported &&
                                             manifest.platforms.Contains(currentPlatformId, StringComparer.OrdinalIgnoreCase);
+            var manifestPath = ProjectSkillsManager.GetManifestPath(projectRoot);
+            var manifestExists = File.Exists(manifestPath);
 
             if (_enableCurrentPlatformToggle != null)
             {
@@ -832,8 +1562,10 @@ namespace Funplay.Editor.MCP.Server
                 _statusLabel.style.color = new Color(0.4f, 1f, 0.4f);
             }
 
-            _manifestPathLabel.text = $"Manifest: {ProjectSkillsManager.GetManifestPath(projectRoot)}";
-            RefreshGeneratedFiles(projectRoot, manifest, currentPlatformId, currentPlatformDisplayName);
+            _manifestPathLabel.text = manifestExists
+                ? $"Manifest: {manifestPath}"
+                : $"Manifest will be created at: {manifestPath}";
+            RefreshGeneratedFiles(projectRoot, manifest, currentPlatformId, currentPlatformDisplayName, currentPlatformConfigured);
         }
 
         private void ApplyProjectSkillsConfiguration()
@@ -934,13 +1666,20 @@ namespace Funplay.Editor.MCP.Server
             string projectRoot,
             ProjectSkillsManager.ProjectSkillsManifest manifest,
             string currentPlatformId,
-            string currentPlatformDisplayName)
+            string currentPlatformDisplayName,
+            bool currentPlatformConfigured)
         {
             _generatedFilesContainer.Clear();
 
             if (string.IsNullOrEmpty(currentPlatformId))
             {
-                _generatedFilesContainer.Add(CreateHint($"Generated files for {currentPlatformDisplayName}: not supported yet.", new Color(0.6f, 0.6f, 0.6f)));
+                _generatedFilesContainer.Add(CreateHint($"{currentPlatformDisplayName} is not supported for project skills yet.", new Color(0.6f, 0.6f, 0.6f)));
+                return;
+            }
+
+            if (!currentPlatformConfigured)
+            {
+                _generatedFilesContainer.Add(CreateHint($"{currentPlatformDisplayName} skills are not configured yet. Enable skills for the current platform, then click Apply Skills to generate files.", new Color(0.7f, 0.7f, 0.7f)));
                 return;
             }
 
@@ -1070,128 +1809,27 @@ namespace Funplay.Editor.MCP.Server
         private static readonly SkillDefinition[] SkillCatalog =
         {
             new SkillDefinition(
-                "using-funplay-skills",
-                "Using FunPlay Skills",
-                "Learn how to discover, choose, and apply FunPlay workflows in an agent session.",
+                "unity-mcp-workflow",
+                "Unity MCP Workflow",
+                "Efficient workflow for using Unity MCP to edit, import, compile, inspect, and test Unity projects.",
                 true,
-                "Use this skill when the user needs help choosing the right FunPlay workflow or combining multiple workflows.",
+                "Use this skill when Codex or another AI agent is working in a Unity project and needs to verify code, prefabs, UI, Play Mode behavior, screenshots, scene hierarchy, console logs, domain reloads, or MCP connection issues.",
                 new[]
                 {
-                    "Identify the asset type or workflow first.",
-                    "Prefer the simplest local workflow that solves the immediate task.",
-                    "Recommend exact commands when a workflow can be run directly.",
-                    "If no installed workflow fits, say which additional skill should be enabled."
-                }),
-            new SkillDefinition(
-                "unity-prefab-workflow",
-                "Unity Prefab Workflow",
-                "Safely plan and review Unity prefab, scene, and serialized asset edits.",
-                true,
-                "Use this skill when the task touches Unity `.prefab`, `.unity`, `.mat`, `.asset`, or related serialized files.",
-                new[]
-                {
-                    "Treat Unity YAML assets as serialization-sensitive.",
-                    "Preserve `.meta` file relationships and GUID stability.",
-                    "Prefer focused edits to one prefab, scene, or material group at a time.",
-                    "Call out in-editor verification steps after file changes."
-                }),
-            new SkillDefinition(
-                "gameplay-prototyping",
-                "Gameplay Prototyping",
-                "Turn a rough game concept into a small, buildable prototype spec.",
-                false,
-                "Use this skill when the user has a game idea but not yet a crisp first-playable definition.",
-                new[]
-                {
-                    "Identify the core player verb and shortest fun loop.",
-                    "Cut anything that does not support the first playable.",
-                    "Define minimum scenes, mechanics, UI, and assets.",
-                    "End with milestones and acceptance criteria."
-                }),
-            new SkillDefinition(
-                "level-design-review",
-                "Level Design Review",
-                "Review flow, readability, guidance, and pacing in a level or encounter layout.",
-                false,
-                "Use this skill when the user wants critique on level structure, encounter pacing, or player guidance.",
-                new[]
-                {
-                    "Check readability of goals and navigation.",
-                    "Call out pacing spikes and dead zones.",
-                    "Separate mandatory fixes from polish suggestions.",
-                    "End with actionable revisions."
-                }),
-            new SkillDefinition(
-                "sprite-sheet",
-                "Sprite Sheet",
-                "Split one sprite sheet into frame images and plan clean export workflows.",
-                false,
-                "Use this skill when the task involves slicing or preparing sprite-sheet based art assets.",
-                new[]
-                {
-                    "Clarify rows, columns, frame order, and padding assumptions.",
-                    "Prefer deterministic naming for exported frames.",
-                    "Call out how the output should be imported into the target engine."
-                }),
-            new SkillDefinition(
-                "normal-map",
-                "Normal Map",
-                "Generate or review normal-map workflows for 2D and 3D game textures.",
-                false,
-                "Use this skill when the task involves creating or validating normal maps from diffuse textures.",
-                new[]
-                {
-                    "Check source texture suitability first.",
-                    "State expected output format and engine import notes.",
-                    "Call out roughness, lighting, and artifact risks."
-                }),
-            new SkillDefinition(
-                "audio-format-convert",
-                "Audio Format Convert",
-                "Convert game audio between wav, ogg, and mp3 with pipeline awareness.",
-                false,
-                "Use this skill when the task is converting audio assets for game integration.",
-                new[]
-                {
-                    "Confirm target format and playback context.",
-                    "Preserve loop quality and avoid accidental clipping.",
-                    "Call out if `ffmpeg` or another local binary is required."
-                }),
-            new SkillDefinition(
-                "game-audio-polish",
-                "Game Audio Polish",
-                "Review game audio assets for loudness, looping, and implementation readiness.",
-                false,
-                "Use this skill when the user wants critique on SFX or music readiness for shipping or prototype use.",
-                new[]
-                {
-                    "Review loudness consistency and loop seams.",
-                    "Identify implementation issues before engine import.",
-                    "Separate blocking problems from polish notes."
-                }),
-            new SkillDefinition(
-                "texture-atlas",
-                "Texture Atlas",
-                "Plan atlas grouping, naming, padding, and packing strategy for 2D/UI assets.",
-                false,
-                "Use this skill when multiple textures or UI sprites need to be packed and organized as an atlas.",
-                new[]
-                {
-                    "Group by usage pattern and runtime constraints.",
-                    "Call out padding and bleed considerations.",
-                    "Define naming and manifest expectations clearly."
-                }),
-            new SkillDefinition(
-                "ui-slicing-checklist",
-                "UI Slicing Checklist",
-                "Review UI sprites for slicing, nine-patch, and export readiness.",
-                false,
-                "Use this skill when the task involves preparing UI art for reliable scaling and slicing behavior.",
-                new[]
-                {
-                    "Check nine-slice suitability before import.",
-                    "Call out anchor, padding, and scaling assumptions.",
-                    "Highlight likely engine-side verification steps."
+                    "Use Unity MCP as the source of truth for Editor state, scene hierarchy, prefab references, runtime objects, compilation status, and Play Mode behavior.",
+                    "Locate the real Unity project root and active scene before editing.",
+                    "Inspect hierarchy, prefab paths, selected objects, and relevant component references through MCP before changing user-named objects.",
+                    "When Tool Exposure uses the default `core` profile, rely on the focused workflow tools: `execute_code`, recompilation, Play Mode control, hierarchy, console logs, screenshots, input simulation, and performance inspection.",
+                    "When Tool Exposure uses the default `full` profile, all registered MCP tools are available. Prefer specific tools for simple scene, asset, GameObject, component, prefab, camera, UI, package, animation, file, or visual-feedback operations.",
+                    "If Tool Exposure has been customized and a named tool is unavailable, adapt to the exposed tool list and report which expected tool is missing.",
+                    "Choose the correct edit surface: source files with normal repo tools, scene objects through Unity APIs and saved scenes, prefab assets through `PrefabUtility.LoadPrefabContents` and `SaveAsPrefabAsset`.",
+                    "Batch related Unity-side changes in one guarded `execute_code` snippet, with explicit missing-object reports and concise before/after values.",
+                    "After external changes under `Assets/`, `Packages/`, or `ProjectSettings/`, call `request_recompile`.",
+                    "Call `wait_for_compilation` before Play Mode, `execute_code`, screenshots, or conclusions.",
+                    "Read back exact values from Unity after changes, not only success messages.",
+                    "Test actual behavior in Unity through hierarchy, console logs, Play Mode, UI interactions, screenshots, or targeted `execute_code` checks.",
+                    "When Unity readback and text files disagree for serialized scene or prefab state, trust Unity readback and investigate the asset path.",
+                    "If Play Mode is entered, exit Play Mode before finishing unless the user explicitly wants it left running."
                 }),
         };
 
@@ -1266,12 +1904,12 @@ namespace Funplay.Editor.MCP.Server
 
         internal static string GetCodexSkillsRoot(string projectRoot)
         {
-            return Path.Combine(projectRoot, ".agents", "skills");
+            return Path.Combine(projectRoot, ".codex", "skills");
         }
 
-        internal static string GetClaudeCommandsRoot(string projectRoot)
+        internal static string GetClaudeSkillsRoot(string projectRoot)
         {
-            return Path.Combine(projectRoot, ".claude", "commands");
+            return Path.Combine(projectRoot, ".claude", "skills");
         }
 
         internal static void ApplyConfiguration(string projectRoot, IEnumerable<string> selectedPlatforms, IEnumerable<string> selectedOptionalSkills)
@@ -1347,10 +1985,11 @@ namespace Funplay.Editor.MCP.Server
 
         internal static IReadOnlyList<string> GetGeneratedPathsForPlatform(string projectRoot, ProjectSkillsManifest manifest, string platformId)
         {
-            var paths = new List<string> { GetManifestPath(projectRoot) };
             var enabled = manifest != null && manifest.platforms.Contains(platformId, StringComparer.OrdinalIgnoreCase);
             if (!enabled)
-                return paths;
+                return Array.Empty<string>();
+
+            var paths = new List<string> { GetManifestPath(projectRoot) };
 
             switch (platformId?.Trim().ToLowerInvariant())
             {
@@ -1360,7 +1999,7 @@ namespace Funplay.Editor.MCP.Server
                     break;
                 case "claude":
                     paths.Add(GetClaudeInstructionsPath(projectRoot));
-                    paths.Add(GetClaudeCommandsRoot(projectRoot));
+                    paths.Add(GetClaudeSkillsRoot(projectRoot));
                     break;
                 case "cursor":
                     paths.Add(GetCursorRulesPath(projectRoot));
@@ -1393,19 +2032,19 @@ namespace Funplay.Editor.MCP.Server
         {
             var enabled = manifest.platforms.Contains("claude", StringComparer.OrdinalIgnoreCase);
             var claudePath = GetClaudeInstructionsPath(projectRoot);
-            var commandsRoot = GetClaudeCommandsRoot(projectRoot);
+            var skillsRoot = GetClaudeSkillsRoot(projectRoot);
 
             if (!enabled)
             {
                 DeleteManagedFile(claudePath);
-                DeleteManagedCommandFiles(commandsRoot);
+                DeleteManagedSkillDirectories(skillsRoot);
                 return;
             }
 
-            Directory.CreateDirectory(commandsRoot);
+            Directory.CreateDirectory(skillsRoot);
 
             File.WriteAllText(claudePath, BuildClaudeInstructionsContent(projectRoot, manifest));
-            WriteManagedClaudeCommands(commandsRoot, manifest);
+            WriteManagedSkillDirectories(skillsRoot, manifest, SkillPlatform.Claude);
         }
 
         private static void SyncCursor(string projectRoot, ProjectSkillsManifest manifest)
@@ -1435,17 +2074,6 @@ namespace Funplay.Editor.MCP.Server
             }
         }
 
-        private static void WriteManagedClaudeCommands(string commandsRoot, ProjectSkillsManifest manifest)
-        {
-            DeleteManagedCommandFiles(commandsRoot);
-
-            foreach (var skill in GetInstalledSkills(manifest))
-            {
-                var path = Path.Combine(commandsRoot, $"funplay-{skill.Id}.md");
-                File.WriteAllText(path, BuildClaudeCommandContent(skill));
-            }
-        }
-
         private static void WriteManagedCursorRules(string rulesRoot, ProjectSkillsManifest manifest)
         {
             DeleteManagedCursorRules(rulesRoot);
@@ -1467,18 +2095,6 @@ namespace Funplay.Editor.MCP.Server
                 var skillPath = Path.Combine(directory, "SKILL.md");
                 if (IsManagedFile(skillPath))
                     Directory.Delete(directory, true);
-            }
-        }
-
-        private static void DeleteManagedCommandFiles(string commandsRoot)
-        {
-            if (!Directory.Exists(commandsRoot))
-                return;
-
-            foreach (var file in Directory.GetFiles(commandsRoot, "funplay-*.md", SearchOption.TopDirectoryOnly))
-            {
-                if (IsManagedFile(file))
-                    File.Delete(file);
             }
         }
 
@@ -1517,8 +2133,11 @@ This file is managed by Funplay MCP for Unity.
 
 ## Codex workflow rules
 
-- Prefer project-local Funplay skills under `.agents/skills/`.
+- Prefer project-local Funplay skills under `.codex/skills/`.
 - Use `execute_code` as the primary Unity automation tool.
+- Inspect Unity objects through MCP before changing user-named scene or prefab targets.
+- Save only the scene or prefab assets intentionally modified, then read back exact values.
+- With default `core` exposure, use the focused workflow tools. With default `full` exposure, prefer specific MCP tools for simple editor operations.
 - Call `request_recompile` immediately after editing scripts or `Assets/` files outside Unity.
 - If recompilation triggers a domain reload, call `get_reload_recovery_status`.
 - Avoid changing `Library/`, `Temp/`, `Logs/`, or `obj/`.
@@ -1530,7 +2149,7 @@ This file is managed by Funplay MCP for Unity.
 
 ## Notes
 
-- Re-run `Funplay > MCP Server > Configure Skills` after changing selected skills or platforms.
+- Re-run `Funplay > Project Skills` after changing selected skills or platforms.
 ";
         }
 
@@ -1553,34 +2172,17 @@ This file is managed by Funplay MCP for Unity for Claude Code.
 
 - Use Funplay MCP tools for Unity editor state and automation.
 - Use `execute_code` for non-trivial Unity orchestration.
+- Inspect Unity objects through MCP before changing user-named scene or prefab targets.
+- Save only the scene or prefab assets intentionally modified, then read back exact values.
+- With default `core` exposure, use the focused workflow tools. With default `full` exposure, prefer specific MCP tools for simple editor operations.
 - Call `request_recompile` after external script edits before assuming Unity imported the latest code.
 - If domain reload interrupts a request, follow with `get_reload_recovery_status`.
-- Additional installed skills are available as project commands under `.claude/commands/`.
+- Additional installed skills are available under `.claude/skills/`.
 
 ## Project
 
 - Project root: `{projectRoot}`
 - Product name: `{Application.productName}`
-";
-        }
-
-        private static string BuildClaudeCommandContent(SkillDefinition skill)
-        {
-            return
-$@"{ManagedMarker}
-
-# {skill.Title}
-
-{skill.WhenToUse}
-
-## Rules
-
-{string.Join("\n", skill.Rules.Select(rule => $"- {rule}"))}
-
-## Metadata
-
-- Skill id: `{skill.Id}`
-- Source: `https://github.com/FunplayAI/funplay-skill`
 ";
         }
 
@@ -1606,12 +2208,15 @@ alwaysApply: {alwaysApply}
 
 - Skill id: `{skill.Id}`
 - Built-in: `{skill.IsBuiltIn}`
-- Source: `https://github.com/FunplayAI/funplay-skill`
+- Source: `https://github.com/FunplayAI/funplay-unity-mcp`
 ";
         }
 
         private static string BuildSkillDocument(SkillDefinition skill, SkillPlatform platform)
         {
+            if (string.Equals(skill.Id, "unity-mcp-workflow", StringComparison.OrdinalIgnoreCase))
+                return BuildUnityMcpWorkflowSkillDocument(skill, platform);
+
             return
 $@"---
 name: funplay-{skill.Id}
@@ -1631,8 +2236,215 @@ platform: {platform.ToString().ToLowerInvariant()}
 ## Metadata
 
 - Original skill id: `{skill.Id}`
-- Source repository: `https://github.com/FunplayAI/funplay-skill`
+- Source repository: `https://github.com/FunplayAI/funplay-unity-mcp`
 ";
+        }
+
+        private static string BuildUnityMcpWorkflowSkillDocument(SkillDefinition skill, SkillPlatform platform)
+        {
+            var header =
+$@"---
+name: funplay-{skill.Id}
+description: {skill.Description}
+platform: {platform.ToString().ToLowerInvariant()}
+---
+{ManagedMarker}
+
+# {skill.Title}
+
+{skill.WhenToUse}
+";
+
+            var body =
+@"
+## Operating Loop
+
+1. Establish context.
+   - Confirm the Unity project root and active scene.
+   - Check that Unity MCP is reachable before assuming Editor state.
+   - Inspect hierarchy, prefab paths, selected objects, and relevant component references through MCP.
+   - If the user names an object, verify the real Unity object path before editing.
+2. Choose the edit surface.
+   - Edit source files with normal repo tools, then trigger Unity recompilation.
+   - Edit scene objects through Unity APIs, mark the scene dirty, and save the scene.
+   - Edit prefab assets with `PrefabUtility.LoadPrefabContents`, `PrefabUtility.SaveAsPrefabAsset`, and `PrefabUtility.UnloadPrefabContents`.
+   - If the user is looking at an open scene instance, update the visible scene instance as well as the prefab asset when appropriate.
+3. Execute changes.
+   - Prefer one well-guarded `execute_code` batch over many fragile UI clicks.
+   - Use null guards for every object lookup and return explicit missing-path messages.
+   - Return concise before/after values from snippets.
+   - Save only the assets or scenes intentionally modified.
+4. Validate.
+   - Read back the changed objects through MCP.
+   - For file edits, call `request_recompile`, then `wait_for_compilation`, then inspect console or compilation errors.
+   - For runtime behavior, enter Play Mode or inspect live objects when needed.
+   - Report exactly what was verified and what still requires device, store, network, or manual validation.
+
+## Tool Exposure
+
+- With the default `core` profile, rely on the focused workflow tools: `execute_code`, recompilation, Play Mode control, hierarchy, console logs, screenshots, input simulation, and performance inspection.
+- With the default `full` profile, prefer specific MCP tools for simple scene, asset, GameObject, component, prefab, camera, UI, package, animation, file, or visual-feedback operations.
+- If Tool Exposure is customized and a named tool is unavailable, adapt to the exposed tool list and report which expected tool is missing.
+
+## MCP Call Pattern
+
+If native MCP tools are not directly available, probe the local HTTP endpoint:
+
+```bash
+curl -sS -m 1 -X POST http://127.0.0.1:8765/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list""}'
+```
+
+For multi-line `execute_code` calls over curl, generate JSON with a real encoder instead of hand-escaping C#:
+
+```bash
+node - <<'NODE'
+const code = String.raw`
+using UnityEngine;
+
+public class InspectSomething
+{
+    public static string Run()
+    {
+        var obj = GameObject.Find(""PracticeInGameUiRoot"");
+        return obj != null ? obj.name : ""not found"";
+    }
+}
+`;
+const payload = {
+  jsonrpc: ""2.0"",
+  id: 1,
+  method: ""tools/call"",
+  params: { name: ""execute_code"", arguments: { code } }
+};
+process.stdout.write(JSON.stringify(payload));
+NODE
+```
+
+## Unity C# Patterns
+
+Use fully qualified types if the snippet environment or injected project code makes `using` statements unreliable:
+
+```csharp
+var root = UnityEngine.GameObject.Find(""PracticeInGameUiRoot"");
+var rect = root.GetComponent<UnityEngine.RectTransform>();
+```
+
+Use Unity null semantics for `UnityEngine.Object` references:
+
+```csharp
+if (image == null)
+{
+    return ""Image missing"";
+}
+```
+
+For prefab edits:
+
+```csharp
+var path = ""Assets/MyGame/UI/Prefabs/PF_PracticeInGameUiRoot.prefab"";
+var prefab = UnityEditor.PrefabUtility.LoadPrefabContents(path);
+try
+{
+    var target = prefab.transform.Find(""SafeArea/SwingCancelZone"");
+    if (target == null)
+    {
+        return ""SwingCancelZone not found in prefab"";
+    }
+
+    var rect = target.GetComponent<UnityEngine.RectTransform>();
+    var before = rect.anchoredPosition;
+    rect.anchoredPosition = new UnityEngine.Vector2(-76f, 448f);
+
+    UnityEditor.EditorUtility.SetDirty(rect);
+    UnityEditor.PrefabUtility.SaveAsPrefabAsset(prefab, path);
+    UnityEditor.AssetDatabase.SaveAssets();
+    return ""Prefab saved: pos "" + before + "" -> "" + rect.anchoredPosition;
+}
+finally
+{
+    UnityEditor.PrefabUtility.UnloadPrefabContents(prefab);
+}
+```
+
+For scene edits:
+
+```csharp
+var obj = UnityEngine.GameObject.Find(""PracticeInGameUiRoot/SafeArea/SwingCancelZone"");
+if (obj == null)
+{
+    return ""Scene object not found"";
+}
+
+var rect = obj.GetComponent<UnityEngine.RectTransform>();
+var before = rect.sizeDelta;
+UnityEditor.Undo.RecordObject(rect, ""Update cancel zone"");
+rect.sizeDelta = new UnityEngine.Vector2(220f, 116f);
+UnityEditor.EditorUtility.SetDirty(rect);
+UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(obj.scene);
+UnityEditor.SceneManagement.EditorSceneManager.SaveScene(obj.scene);
+return ""Scene saved: size "" + before + "" -> "" + rect.sizeDelta;
+```
+
+## Recompile And Reload
+
+After external C# or asset file edits:
+
+1. Call `request_recompile`.
+2. Call `wait_for_compilation`.
+3. Read console or compilation errors before continuing.
+4. If a domain reload drops the request, call `get_reload_recovery_status` when available, re-scan the MCP endpoint if needed, then continue from `wait_for_compilation`.
+
+Do not treat a disconnected request as a successful compile.
+
+## Verification Checklist
+
+Use readback snippets that print exact values, not only `success`:
+
+```csharp
+var all = UnityEngine.Resources.FindObjectsOfTypeAll<UnityEngine.Transform>();
+UnityEngine.Transform target = null;
+for (int i = 0; i < all.Length; i++)
+{
+    if (all[i].name == ""SwingCancelZone"")
+    {
+        target = all[i];
+        break;
+    }
+}
+
+if (target == null)
+{
+    return ""SwingCancelZone not found"";
+}
+
+var rect = target.GetComponent<UnityEngine.RectTransform>();
+return ""path="" + target.name + ""; pos="" + rect.anchoredPosition + ""; size="" + rect.sizeDelta;
+```
+
+For UI work, verify prefab or scene hierarchy, sprite references, anchors, sorting order, active state, text fit, and button listeners. A populated `Content` hierarchy does not prove the user can see the UI.
+
+For gameplay or network work, verify object identity, ownership, live instance existence, transform values, animation state, visibility, and whether client-side filters are discarding valid data.
+
+## Failure Handling
+
+- If MCP is unreachable, say so and fall back only to safe filesystem inspection or code edits. Do not claim scene, prefab, or runtime verification without Unity readback.
+- If an object lookup fails, inspect hierarchy and prefab contents instead of inventing a path.
+- If multiple matching objects exist, print their paths and choose the one matching the user-visible UI or current scene.
+- If compile errors appear after a change, fix them before Play Mode validation.
+- When Unity and text files disagree for serialized scene or prefab state, trust Unity readback and inspect the asset path.
+";
+
+            var footer =
+$@"
+## Metadata
+
+- Original skill id: `{skill.Id}`
+- Source repository: `https://github.com/FunplayAI/funplay-unity-mcp`
+";
+
+            return header + body + footer;
         }
 
         private static ProjectSkillsManifest CreateDefaultManifest()

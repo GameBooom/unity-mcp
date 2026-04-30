@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Funplay.Editor.Api.Models;
+using Funplay.Editor.Settings;
 using UnityEngine;
 
 namespace Funplay.Editor.Tools
@@ -172,7 +173,7 @@ namespace Funplay.Editor.Tools
                 };
             }
 
-            Debug.Log($"[Funplay] Registered manual tool: {name}");
+            PluginDebugLogger.Log($"[Funplay] Registered manual tool: {name}");
         }
 
         /// <summary>

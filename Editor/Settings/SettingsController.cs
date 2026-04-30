@@ -1,7 +1,9 @@
 // Copyright (C) Funplay. Licensed under MIT.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Funplay.Editor.Services;
 using UnityEngine;
 
@@ -14,6 +16,7 @@ namespace Funplay.Editor.Settings
         private const int DefaultPort = 8765;
         private const string DefaultToolExportProfile = "core";
         private const string DefaultSelectedConfigTarget = "Claude Code";
+        private const bool DefaultPluginDebugLoggingEnabled = true;
 
         private readonly string _settingsPath;
         private readonly object _lock = new object();
@@ -73,6 +76,58 @@ namespace Funplay.Editor.Settings
             }
         }
 
+        public bool MCPCoreToolsConfigured
+        {
+            get
+            {
+                lock (_lock)
+                    return _settings.coreToolsCustom;
+            }
+        }
+
+        public string[] MCPCoreTools
+        {
+            get
+            {
+                lock (_lock)
+                    return _settings.coreTools?.ToArray() ?? Array.Empty<string>();
+            }
+            set
+            {
+                UpdateSettings(data =>
+                {
+                    data.coreToolsCustom = value != null;
+                    data.coreTools = NormalizeToolNames(value);
+                });
+            }
+        }
+
+        public bool MCPFullToolsConfigured
+        {
+            get
+            {
+                lock (_lock)
+                    return _settings.fullToolsCustom;
+            }
+        }
+
+        public string[] MCPFullTools
+        {
+            get
+            {
+                lock (_lock)
+                    return _settings.fullTools?.ToArray() ?? Array.Empty<string>();
+            }
+            set
+            {
+                UpdateSettings(data =>
+                {
+                    data.fullToolsCustom = value != null;
+                    data.fullTools = NormalizeToolNames(value);
+                });
+            }
+        }
+
         public string MCPSelectedConfigTarget
         {
             get
@@ -84,6 +139,23 @@ namespace Funplay.Editor.Settings
             {
                 var normalized = NormalizeSelectedConfigTarget(value);
                 UpdateSettings(data => data.selectedConfigTarget = normalized);
+            }
+        }
+
+        public bool PluginDebugLoggingEnabled
+        {
+            get
+            {
+                lock (_lock)
+                    return _settings.pluginDebugLoggingEnabled;
+            }
+            set
+            {
+                UpdateSettings(data =>
+                {
+                    data.pluginDebugLoggingEnabled = value;
+                    data.pluginDebugLoggingConfigured = true;
+                });
             }
         }
 
@@ -161,7 +233,9 @@ namespace Funplay.Editor.Settings
                 enabled = false,
                 port = DefaultPort,
                 toolExportProfile = DefaultToolExportProfile,
-                selectedConfigTarget = DefaultSelectedConfigTarget
+                selectedConfigTarget = DefaultSelectedConfigTarget,
+                pluginDebugLoggingEnabled = DefaultPluginDebugLoggingEnabled,
+                pluginDebugLoggingConfigured = true
             };
         }
 
@@ -172,7 +246,14 @@ namespace Funplay.Editor.Settings
 
             settings.port = settings.port > 0 ? settings.port : DefaultPort;
             settings.toolExportProfile = NormalizeToolExportProfile(settings.toolExportProfile);
+            settings.coreTools = settings.coreToolsCustom ? NormalizeToolNames(settings.coreTools) : null;
+            settings.fullTools = settings.fullToolsCustom ? NormalizeToolNames(settings.fullTools) : null;
             settings.selectedConfigTarget = NormalizeSelectedConfigTarget(settings.selectedConfigTarget);
+            if (!settings.pluginDebugLoggingConfigured)
+            {
+                settings.pluginDebugLoggingEnabled = DefaultPluginDebugLoggingEnabled;
+                settings.pluginDebugLoggingConfigured = true;
+            }
         }
 
         private static string NormalizeToolExportProfile(string value)
@@ -185,13 +266,32 @@ namespace Funplay.Editor.Settings
             return string.IsNullOrWhiteSpace(value) ? DefaultSelectedConfigTarget : value.Trim();
         }
 
+        private static List<string> NormalizeToolNames(IEnumerable<string> values)
+        {
+            if (values == null)
+                return null;
+
+            return values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         [Serializable]
         private class SettingsData
         {
             public bool enabled = false;
             public int port = DefaultPort;
             public string toolExportProfile = DefaultToolExportProfile;
+            public bool coreToolsCustom = false;
+            public List<string> coreTools;
+            public bool fullToolsCustom = false;
+            public List<string> fullTools;
             public string selectedConfigTarget = DefaultSelectedConfigTarget;
+            public bool pluginDebugLoggingEnabled = DefaultPluginDebugLoggingEnabled;
+            public bool pluginDebugLoggingConfigured = false;
         }
     }
 }

@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using Funplay.Editor.Tools;
 using Funplay.Editor.Settings;
-using UnityEngine;
 
 namespace Funplay.Editor.MCP.Server
 {
@@ -36,11 +35,17 @@ namespace Funplay.Editor.MCP.Server
                     : string.Compare(left.function.name, right.function.name, StringComparison.OrdinalIgnoreCase);
             });
 
-            Debug.Log($"[Funplay MCP Server] Exporting tools with profile '{MCPToolExportPolicy.ToSettingValue(profile)}'");
+            PluginDebugLogger.Log($"[Funplay MCP Server] Exporting tools with profile '{MCPToolExportPolicy.ToSettingValue(profile)}'");
 
             foreach (var tool in tools)
             {
-                if (!MCPToolExportPolicy.IsToolAllowed(tool.function.name, profile))
+                if (!MCPToolExportPolicy.IsToolAllowed(
+                        tool.function.name,
+                        profile,
+                        _settings?.MCPCoreToolsConfigured ?? false,
+                        _settings?.MCPCoreTools,
+                        _settings?.MCPFullToolsConfigured ?? false,
+                        _settings?.MCPFullTools))
                     continue;
 
                 var mcpTool = new Dictionary<string, object>

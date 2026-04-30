@@ -29,7 +29,7 @@ namespace Funplay.Editor.DI
                 var services = new ServiceCollection();
                 services.RegisterServices();
                 _serviceProvider = services.BuildServiceProvider();
-                Debug.Log("[Funplay] Root services initialized.");
+                PluginDebugLogger.Log("[Funplay] Root services initialized.");
 
                 var unityLogsRepository =
                     _serviceProvider.GetService(typeof(UnityLogsRepository)) as UnityLogsRepository;

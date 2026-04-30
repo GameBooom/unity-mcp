@@ -44,7 +44,6 @@ namespace Funplay.Editor.MCP.Client
             try
             {
                 _host = new MCPHost(command, arguments, envVars);
-                _host.OnLog += msg => Debug.Log($"[Funplay MCP] {msg}");
 
                 var connected = await _host.ConnectAsync(ct);
                 if (!connected)
@@ -66,7 +65,7 @@ namespace Funplay.Editor.MCP.Client
                     _mcpToolNames.Add(td.function.name);
 
                 _isRunning = true;
-                Debug.Log($"[Funplay] MCP started. Discovered {_toolDefinitions.Count} tools.");
+                PluginDebugLogger.Log($"[Funplay] MCP started. Discovered {_toolDefinitions.Count} tools.");
                 return true;
             }
             catch (Exception ex)

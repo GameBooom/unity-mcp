@@ -7,7 +7,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
+using Funplay.Editor.Settings;
 
 namespace Funplay.Editor.MCP.Client
 {
@@ -148,7 +148,7 @@ namespace Funplay.Editor.MCP.Client
                 {
                     sb.AppendLine(line);
                     _stderrOutput = sb.ToString();
-                    UnityEngine.Debug.Log($"[Funplay MCP] stderr: {line}");
+                    PluginDebugLogger.Log($"[Funplay MCP] stderr: {line}");
                 }
             }
             catch { /* Process ended or stream closed */ }
@@ -282,7 +282,7 @@ namespace Funplay.Editor.MCP.Client
 
         private void Log(string message)
         {
-            UnityEngine.Debug.Log($"[Funplay MCP] {message}");
+            PluginDebugLogger.Log($"[Funplay MCP] {message}");
             OnLog?.Invoke(message);
         }
 

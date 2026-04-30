@@ -32,7 +32,7 @@ namespace Funplay.Editor.MCP.Server
                 if (mcpServer?.IsRunning != true)
                     return;
 
-                Debug.Log("[Funplay MCP Server] Saving state before domain reload");
+                PluginDebugLogger.Log("[Funplay MCP Server] Saving state before domain reload");
                 SessionState.SetBool(WasRunningKey, true);
                 SessionState.SetInt(PortKey, mcpServer.Port);
             }
@@ -66,7 +66,7 @@ namespace Funplay.Editor.MCP.Server
             {
                 if (SessionState.GetBool(WasRunningKey, false))
                 {
-                    Debug.Log("[Funplay MCP Server] Restarting server after domain reload");
+                    PluginDebugLogger.Log("[Funplay MCP Server] Restarting server after domain reload");
 
                     EditorApplication.delayCall += () =>
                     {

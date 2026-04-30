@@ -7,6 +7,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Funplay.Editor.Settings;
 using UnityEngine;
 
 namespace Funplay.Editor.MCP.Server
@@ -46,7 +47,7 @@ namespace Funplay.Editor.MCP.Server
 
                 _ = Task.Run(() => ListenLoopAsync(_cts.Token), _cts.Token);
 
-                Debug.Log($"[Funplay MCP Server] HTTP transport started on http://127.0.0.1:{_port}/");
+                PluginDebugLogger.Log($"[Funplay MCP Server] HTTP transport started on http://127.0.0.1:{_port}/");
                 return Task.FromResult(true);
             }
             catch (Exception ex)
@@ -66,7 +67,7 @@ namespace Funplay.Editor.MCP.Server
                 _listener?.Stop();
                 _listener?.Close();
                 _isRunning = false;
-                Debug.Log("[Funplay MCP Server] HTTP transport stopped");
+                PluginDebugLogger.Log("[Funplay MCP Server] HTTP transport stopped");
             }
             catch (Exception ex)
             {

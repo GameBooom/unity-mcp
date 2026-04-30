@@ -53,13 +53,19 @@ https://github.com/FunplayAI/funplay-unity-mcp.git
 
 The server starts on `http://127.0.0.1:8765/` by default.
 
+Open **Funplay → Tool Exposure** if you want to edit the exact tools exposed by `core` or `full`.
+
+Open **Funplay → Plugin Settings** if you need to adjust plugin debug logging while troubleshooting.
+
 ### 3. Configure Your AI Client
 
 Use the built-in **One-Click MCP Configuration** in the `Funplay > MCP Server` window first.
 
 Select your target client, click **Configure**, and the package writes the recommended MCP config entry for you.
 
-If you want project-specific AI guidance for the current Unity project, open **Funplay → Project Skills (Experimental)** to choose supported platforms and install built-in plus optional skills.
+For Claude Code, Cursor, and Codex, click **Configure + Skills** to also install the default project MCP workflow skill.
+
+If you want project-specific AI guidance for the current Unity project, open **Funplay → Project Skills** to choose supported platforms and install the default `unity-mcp-workflow` skill.
 
 If you prefer to edit config files manually, use the examples below as fallback references:
 
@@ -178,6 +184,7 @@ Open your AI client and try: *"Create a 3D platformer level with 5 floating plat
 - The MCP server starts on `http://127.0.0.1:8765/` by default.
 - Local MCP server settings are stored in `UserSettings/FunplayMcpSettings.json`.
 - The package defaults to the `core` MCP tool profile to reduce tool-list noise for AI clients. `core` currently exposes 19 high-signal tools centered on `execute_code`, play mode control, input simulation, screenshots, performance inspection, logs, and compilation checks. Switch to `full` in the MCP Server window if you want all 79 tools exposed.
+- Plugin debug logging is on by default and can be disabled from **Funplay > Plugin Settings**. Warnings and errors are always written to the Unity Console.
 - All exposed MCP tools run directly. There is no extra approval toggle.
 - **Menu: `Funplay > Check for Updates`** can refresh Git installs in place or download and import the latest `unitypackage` automatically.
 
@@ -197,7 +204,9 @@ Open your AI client and try: *"Create a 3D platformer level with 5 floating plat
 - **Input Simulation + Screenshots** — Drive play mode with keyboard/mouse simulation and verify results with game/scene captures
 - **Built-in Updating** — Check for updates from the Unity menu and either re-pull the Git package or auto-import the latest `unitypackage`
 - **One-Click Client Configuration** — Generate MCP config entries for Claude Code, Cursor, VS Code, Kiro, Trae, Codex, and similar clients directly from the Unity window
-- **Project Skills Manager (Experimental)** — Configure project-level skills for supported AI clients, with built-in skills plus optional installable skills
+- **Tool Exposure Control** — Edit the exact tools exposed by `core` and `full`
+- **Project Skills Manager** — Configure project-level skills for supported AI clients, currently installing the default `unity-mcp-workflow` skill
+- **Plugin Settings** — Toggle verbose plugin debug logging when troubleshooting MCP connections or tool execution
 - **Vendor Agnostic** — Works with any AI client that supports MCP: Claude Code, Cursor, Windsurf, Codex, VS Code Copilot, etc.
 
 ## Comparison With Coplay

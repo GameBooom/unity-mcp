@@ -36,6 +36,8 @@ namespace Funplay.Editor.MCP.Server
             "get_time_scale"
         };
 
+        public static IReadOnlyCollection<string> DefaultCoreTools => CoreTools;
+
         public static MCPToolExportProfile Parse(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -61,12 +63,37 @@ namespace Funplay.Editor.MCP.Server
             }
         }
 
-        public static bool IsToolAllowed(string toolName, MCPToolExportProfile profile)
+        public static bool IsToolAllowed(
+            string toolName,
+            MCPToolExportProfile profile,
+            bool coreToolsConfigured,
+            IEnumerable<string> coreTools,
+            bool fullToolsConfigured,
+            IEnumerable<string> fullTools)
         {
             if (string.IsNullOrWhiteSpace(toolName))
                 return false;
 
-            return profile == MCPToolExportProfile.Full || CoreTools.Contains(toolName);
+            if (profile == MCPToolExportProfile.Full)
+                return !fullToolsConfigured || ContainsTool(fullTools, toolName);
+
+            return coreToolsConfigured
+                ? ContainsTool(coreTools, toolName)
+                : CoreTools.Contains(toolName);
+        }
+
+        private static bool ContainsTool(IEnumerable<string> tools, string toolName)
+        {
+            if (tools == null)
+                return false;
+
+            foreach (var tool in tools)
+            {
+                if (string.Equals(tool, toolName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
 
         public static string BuildDescriptionPrefix(MCPToolExportProfile profile)

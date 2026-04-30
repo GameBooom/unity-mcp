@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using Funplay.Editor.Settings;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -74,7 +75,7 @@ namespace Funplay.Editor.MCP
                 }
             }
 
-            Debug.Log($"[Funplay] Cleaned up {files.Length} leftover temp scripts.");
+            PluginDebugLogger.Log($"[Funplay] Cleaned up {files.Length} leftover temp scripts.");
             AssetDatabase.Refresh();
         }
 
@@ -171,7 +172,7 @@ namespace Funplay.Editor.MCP
         private static void StoreResult(string result)
         {
             SessionState.SetString(ResultKey, result);
-            Debug.Log($"[Funplay] Script execution result: {result}");
+            PluginDebugLogger.Log($"[Funplay] Script execution result: {result}");
         }
 
         private static void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)

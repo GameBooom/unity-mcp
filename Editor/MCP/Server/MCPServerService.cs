@@ -37,7 +37,7 @@ namespace Funplay.Editor.MCP.Server
         private bool _recoveryChecked;
         private bool _restartScheduled;
         private bool _restartInProgress;
-        private string _toolExportProfileSetting;
+        private string _toolExposureSetting;
 
         public bool IsRunning => _isRunning;
         public int Port { get; private set; }
@@ -61,7 +61,7 @@ namespace Funplay.Editor.MCP.Server
             _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
 
             Port = _settings.MCPServerPort;
-            _toolExportProfileSetting = _settings.MCPToolExportProfile;
+            _toolExposureSetting = BuildToolExposureSetting();
             InteractionLog = new MCPInteractionLog();
             _settings.OnSettingsChanged += HandleSettingsChanged;
             DomainReloadHandler.Register(_stateController);
@@ -77,15 +77,15 @@ namespace Funplay.Editor.MCP.Server
 
             if (_isRunning)
             {
-                Debug.Log("[Funplay MCP Server] Server is already running");
+                PluginDebugLogger.Log("[Funplay MCP Server] Server is already running");
                 return true;
             }
 
             try
             {
                 Port = ResolveStartupPort();
-                _toolExportProfileSetting = _settings.MCPToolExportProfile;
-                Debug.Log("[Funplay MCP Server] Starting server...");
+                _toolExposureSetting = BuildToolExposureSetting();
+                PluginDebugLogger.Log("[Funplay MCP Server] Starting server...");
 
                 _transport = new HttpMCPTransport(Port);
                 var toolExporter = new MCPToolExporter(_settings);
@@ -106,7 +106,7 @@ namespace Funplay.Editor.MCP.Server
                 if (started)
                 {
                     _isRunning = true;
-                    Debug.Log($"[Funplay] MCP Server started on http://127.0.0.1:{Port}/ If this tool saves you time, please consider giving it a Star on GitHub: https://github.com/FunplayAI/funplay-unity-mcp");
+                    PluginDebugLogger.Log($"[Funplay] MCP Server started on http://127.0.0.1:{Port}/ If this tool saves you time, please consider giving it a Star on GitHub: https://github.com/FunplayAI/funplay-unity-mcp");
                     ExternalSyncRecoveryTracker.TryCompletePendingRecovery();
                     CheckForInterruptedExecution();
                     return true;
@@ -128,7 +128,7 @@ namespace Funplay.Editor.MCP.Server
 
             try
             {
-                Debug.Log("[Funplay MCP Server] Stopping server...");
+                PluginDebugLogger.Log("[Funplay MCP Server] Stopping server...");
 
                 if (_transport != null)
                 {
@@ -142,7 +142,7 @@ namespace Funplay.Editor.MCP.Server
                 _resourceProvider?.Dispose();
                 _resourceProvider = null;
                 _isRunning = false;
-                Debug.Log("[Funplay] MCP Server stopped");
+                PluginDebugLogger.Log("[Funplay] MCP Server stopped");
             }
             catch (Exception ex)
             {
@@ -174,15 +174,26 @@ namespace Funplay.Editor.MCP.Server
             if (_disposed) return;
 
             var portChanged = _settings.MCPServerPort != Port;
-            var profileChanged = !string.Equals(_settings.MCPToolExportProfile, _toolExportProfileSetting, StringComparison.Ordinal);
+            var toolExposureSetting = BuildToolExposureSetting();
+            var toolExposureChanged = !string.Equals(toolExposureSetting, _toolExposureSetting, StringComparison.Ordinal);
 
-            if ((portChanged || profileChanged) && _isRunning)
+            if ((portChanged || toolExposureChanged) && _isRunning)
             {
-                Debug.Log("[Funplay MCP Server] Server settings changed, restarting MCP transport...");
+                PluginDebugLogger.Log("[Funplay MCP Server] Server settings changed, restarting MCP transport...");
                 Port = _settings.MCPServerPort;
-                _toolExportProfileSetting = _settings.MCPToolExportProfile;
+                _toolExposureSetting = toolExposureSetting;
                 ScheduleRestart();
             }
+        }
+
+        private string BuildToolExposureSetting()
+        {
+            return string.Join("|",
+                _settings.MCPToolExportProfile ?? string.Empty,
+                _settings.MCPCoreToolsConfigured ? "core=custom" : "core=default",
+                string.Join(",", _settings.MCPCoreTools ?? Array.Empty<string>()),
+                _settings.MCPFullToolsConfigured ? "full=custom" : "full=default",
+                string.Join(",", _settings.MCPFullTools ?? Array.Empty<string>()));
         }
 
         private int ResolveStartupPort()
@@ -345,7 +356,7 @@ namespace Funplay.Editor.MCP.Server
             InteractionLog.Add(toolName, status, summary);
 
             if (status == MCPToolCallStatus.Success)
-                Debug.Log($"[Funplay MCP Server] Recovery completed for '{toolName}'. {summary}");
+                PluginDebugLogger.Log($"[Funplay MCP Server] Recovery completed for '{toolName}'. {summary}");
             else
                 Debug.LogWarning($"[Funplay MCP Server] Recovery detected for '{toolName}'. {summary}");
         }
