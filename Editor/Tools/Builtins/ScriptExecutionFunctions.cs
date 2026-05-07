@@ -5,9 +5,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Funplay.Editor.Tools.Helpers;
+using Funplay.Editor.Tools.Scripting;
 using UnityEditor;
 using UnityEngine;
 
@@ -21,11 +25,28 @@ namespace Funplay.Editor.Tools.Builtins
         private static bool _typesResolved;
         private static string _typeLoadError;
 
-        [Description("Primary high-flexibility execution tool for runtime and editor orchestration. Execute a C# code snippet in the Unity Editor or Play Mode context to inspect live state, query objects and components, validate behavior, build scene content, wire references, batch-create objects, or apply targeted editor changes. Prefer this when the task needs rich multi-step logic or when many small tools would be noisy. The code is compiled in memory and executed immediately via reflection. No .cs files are created and no domain reload is triggered. The code should contain a class with a public static string Run() method.")]
+        [Description("Primary high-flexibility execution tool. Compiles a C# snippet in memory and runs it on the editor thread. " +
+                     "Two templates are supported:\n" +
+                     "  1) Recommended: implement IFunplayCommand on a class — receives an ExecutionContext (ctx) " +
+                     "with RegisterObjectCreation/RegisterObjectModification/DestroyObject (auto-Undo + tracked) and " +
+                     "Log/LogWarning/LogError (returned in the response).\n" +
+                     "  2) Legacy: any class with `public static string Run()` — return value becomes the response message.\n" +
+                     "Before compiling, the editor's AssetDatabase is refreshed and pending compilation is awaited, " +
+                     "so external file edits are picked up automatically without a separate request_recompile.")]
         [SceneEditingTool]
-        public static string ExecuteCode(
-            [ToolParam("C# code to execute. Must define a class with a public static string Run() method, or be a snippet that can be wrapped into one.")] string code)
+        public static async Task<object> ExecuteCode(
+            [ToolParam("C# code to execute. See description for IFunplayCommand vs legacy Run() templates.")] string code)
         {
+            try
+            {
+                await EditorReadyHelper.RefreshAndWaitForReady();
+            }
+            catch (TimeoutException)
+            {
+                return Response.Error("EDITOR_BUSY",
+                    new { hint = "Unity is still compiling/importing. Retry in a moment." });
+            }
+
             var className = "TempScript_" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var actualClassName = className;
             var projectUsings = GetProjectNamespaceUsings();
@@ -51,7 +72,7 @@ namespace Funplay.Editor.Tools.Builtins
             catch (Exception ex)
             {
                 Debug.LogError($"[Funplay] ExecuteCode failed: {ex.Message}");
-                return $"Error: {ex.Message}";
+                return Response.Error($"EXECUTE_CODE_FAILED: {ex.Message}");
             }
         }
 
@@ -115,10 +136,10 @@ namespace Funplay.Editor.Tools.Builtins
             }
         }
 
-        private static string CompileAndExecute(string code, string className)
+        private static object CompileAndExecute(string code, string className)
         {
             if (!EnsureCodeDomTypes())
-                return $"Error: Cannot compile code - {_typeLoadError}";
+                return Response.Error($"CODEDOM_UNAVAILABLE: {_typeLoadError}");
 
             var provider = Activator.CreateInstance(_providerType);
             try
@@ -152,7 +173,7 @@ namespace Funplay.Editor.Tools.Builtins
                 var compileMethod = _providerType.GetMethod("CompileAssemblyFromSource", new[] { _paramsType, typeof(string[]) });
                 var results = compileMethod?.Invoke(provider, new object[] { parameters, new[] { code } });
                 if (results == null)
-                    return "Error: Compilation failed to produce results.";
+                    return Response.Error("COMPILATION_NULL_RESULT");
 
                 var resultsType = results.GetType();
                 var errors = resultsType.GetProperty("Errors")?.GetValue(results, null);
@@ -160,44 +181,63 @@ namespace Funplay.Editor.Tools.Builtins
 
                 if (hasErrors)
                 {
-                    var sb = new StringBuilder("Compilation errors:\n");
+                    var errorList = new List<object>();
                     foreach (var error in (IEnumerable)errors)
                     {
                         var errorType = error.GetType();
                         var isWarning = (bool)(errorType.GetProperty("IsWarning")?.GetValue(error, null) ?? false);
                         if (isWarning)
                             continue;
-
-                        var line = (int)(errorType.GetProperty("Line")?.GetValue(error, null) ?? 0);
-                        var errorText = errorType.GetProperty("ErrorText")?.GetValue(error, null)?.ToString() ?? "Unknown error";
-                        sb.AppendLine($"  Line {line}: {errorText}");
+                        errorList.Add(new
+                        {
+                            line = (int)(errorType.GetProperty("Line")?.GetValue(error, null) ?? 0),
+                            column = (int)(errorType.GetProperty("Column")?.GetValue(error, null) ?? 0),
+                            text = errorType.GetProperty("ErrorText")?.GetValue(error, null)?.ToString() ?? "Unknown error"
+                        });
                     }
-
-                    return sb.ToString();
+                    return Response.Error("COMPILATION_FAILED", new { errors = errorList });
                 }
 
                 var compiledAssembly = resultsType.GetProperty("CompiledAssembly")?.GetValue(results, null) as Assembly;
                 if (compiledAssembly == null)
-                    return "Error: Compiled assembly not found.";
+                    return Response.Error("COMPILED_ASSEMBLY_MISSING");
 
+                // Prefer IFunplayCommand path: any class in the compiled assembly that implements it
+                Type commandType = null;
+                try
+                {
+                    commandType = compiledAssembly.GetTypes()
+                        .FirstOrDefault(t => typeof(IFunplayCommand).IsAssignableFrom(t)
+                                             && !t.IsInterface && !t.IsAbstract);
+                }
+                catch (ReflectionTypeLoadException)
+                {
+                    // Fall through to legacy Run() path
+                }
+                if (commandType != null)
+                    return ExecuteAsCommand(commandType);
+
+                // Legacy path: class with `static Run()`
                 var type = compiledAssembly.GetType(className);
                 if (type == null)
-                    return $"Error: Type '{className}' not found in compiled assembly. Available types: {string.Join(", ", GetTypeNames(compiledAssembly))}";
+                    return Response.Error("CLASS_NOT_FOUND",
+                        new { className, available = GetTypeNames(compiledAssembly) });
 
                 var method = type.GetMethod("Run", BindingFlags.Public | BindingFlags.Static);
                 if (method == null)
-                    return $"Error: public static Run() method not found in '{className}'.";
+                    return Response.Error("RUN_METHOD_NOT_FOUND", new { className });
 
                 try
                 {
                     var result = method.Invoke(null, null);
-                    return result?.ToString() ?? "OK (no return value)";
+                    return Response.Success("Executed (legacy Run()).", new { result = result?.ToString() ?? "OK" });
                 }
                 catch (TargetInvocationException ex)
                 {
                     var inner = ex.InnerException ?? ex;
                     Debug.LogError($"[Funplay] Script runtime error: {inner.Message}\n{inner.StackTrace}");
-                    return $"Runtime error: {inner.Message}\n{inner.StackTrace}";
+                    return Response.Error("RUNTIME_ERROR",
+                        new { message = inner.Message, stack = inner.StackTrace });
                 }
             }
             finally
@@ -205,6 +245,45 @@ namespace Funplay.Editor.Tools.Builtins
                 if (provider is IDisposable disposable)
                     disposable.Dispose();
             }
+        }
+
+        private static object ExecuteAsCommand(Type commandType)
+        {
+            IFunplayCommand instance;
+            try { instance = (IFunplayCommand)Activator.CreateInstance(commandType); }
+            catch (Exception ex)
+            {
+                return Response.Error("COMMAND_INSTANTIATION_FAILED",
+                    new { type = commandType.FullName, error = ex.Message });
+            }
+
+            var ctx = new ExecutionContext();
+            try
+            {
+                instance.Execute(ctx);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Funplay] Command runtime error: {ex.Message}\n{ex.StackTrace}");
+                return Response.Error("COMMAND_RUNTIME_ERROR", new
+                {
+                    message = ex.Message,
+                    stack = ex.StackTrace,
+                    logs = ctx.Logs,
+                    created = ctx.CreatedInstanceIds,
+                    modified = ctx.ModifiedInstanceIds,
+                    destroyed = ctx.DestroyedInstanceIds
+                });
+            }
+
+            return Response.Success("Command executed.", new
+            {
+                logs = ctx.Logs,
+                created = ctx.CreatedInstanceIds,
+                modified = ctx.ModifiedInstanceIds,
+                destroyed = ctx.DestroyedInstanceIds,
+                returnValue = ctx.ReturnValue
+            });
         }
 
         private static string[] GetTypeNames(Assembly assembly)
@@ -231,6 +310,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using Funplay.Editor.Tools.Scripting;
 {projectUsings}
 public static class {className}
 {{

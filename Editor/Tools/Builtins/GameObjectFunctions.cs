@@ -1,6 +1,7 @@
 // Copyright (C) Funplay. Licensed under MIT.
 using System.Collections.Generic;
 using DescriptionAttribute = System.ComponentModel.DescriptionAttribute;
+using Funplay.Editor.Tools.Helpers;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -10,31 +11,31 @@ namespace Funplay.Editor.Tools.Builtins
     [ToolProvider("GameObject")]
     internal static class GameObjectFunctions
     {
-        [Description("Create a new empty GameObject in the scene")]
+        [Description("Create a new empty GameObject in the scene. Returns the new instanceId so it can be targeted by_id in follow-up calls.")]
         [SceneEditingTool]
-        public static string CreateGameObject(
+        public static object CreateGameObject(
             [ToolParam("Name of the new GameObject")] string name,
-            [ToolParam("Parent GameObject name (optional)", Required = false)] string parent_name = null)
+            [ToolParam("Parent GameObject identifier (instance id, name, or path)", Required = false)] string parent = null,
+            [ToolParam("How to resolve parent (by_id, by_name, by_path, by_id_or_name_or_path)", Required = false)] string find_method = null)
         {
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, $"Create {name}");
 
-            if (!string.IsNullOrEmpty(parent_name))
+            if (!string.IsNullOrEmpty(parent))
             {
-                var parentGo = FindSceneGameObject(parent_name);
-                if (parentGo != null)
-                {
-                    Undo.SetTransformParent(go.transform, parentGo.transform, $"Set parent of {name}");
-                }
+                var parentGo = ObjectsHelper.FindObject(parent, find_method);
+                if (parentGo == null)
+                    return Response.Error("PARENT_NOT_FOUND", new { parent, find_method });
+                Undo.SetTransformParent(go.transform, parentGo.transform, $"Set parent of {name}");
             }
 
             Selection.activeGameObject = go;
-            return $"Created GameObject '{name}' (InstanceID: {go.GetInstanceID()})";
+            return Response.Success($"Created GameObject '{name}'.", GameObjectSerializer.Describe(go, includeComponents: false));
         }
 
-        [Description("Create a primitive GameObject (Cube, Sphere, Capsule, Cylinder, Plane, Quad)")]
+        [Description("Create a primitive GameObject (Cube, Sphere, Capsule, Cylinder, Plane, Quad).")]
         [SceneEditingTool]
-        public static string CreatePrimitive(
+        public static object CreatePrimitive(
             [ToolParam("Name of the new object")] string name,
             [ToolParam("Primitive type: Cube, Sphere, Capsule, Cylinder, Plane, Quad")] string primitive_type,
             [ToolParam("Position as 'x,y,z'", Required = false)] string position = "0,0,0",
@@ -49,265 +50,261 @@ namespace Funplay.Editor.Tools.Builtins
                 case "cylinder": type = PrimitiveType.Cylinder; break;
                 case "plane": type = PrimitiveType.Plane; break;
                 case "quad": type = PrimitiveType.Quad; break;
-                default: return $"Error: Unknown primitive type '{primitive_type}'";
+                default: return Response.Error($"UNKNOWN_PRIMITIVE: '{primitive_type}'");
             }
 
             var go = GameObject.CreatePrimitive(type);
             go.name = name;
             Undo.RegisterCreatedObjectUndo(go, $"Create {name}");
-
             go.transform.position = ParseVector3(position);
             go.transform.localScale = ParseVector3(scale);
-
             Selection.activeGameObject = go;
-            return $"Created {primitive_type} '{name}' at {go.transform.position}";
+
+            return Response.Success($"Created {primitive_type} '{name}'.", GameObjectSerializer.Describe(go, includeComponents: false));
         }
 
-        [Description("Delete a GameObject from the scene by name")]
+        [Description("Delete a GameObject. Targets resolved through ObjectsHelper (instance id, name, path, tag, layer, component).")]
         [SceneEditingTool]
-        public static string DeleteGameObject(
-            [ToolParam("Name of the GameObject to delete")] string name)
+        public static object DeleteGameObject(
+            [ToolParam("Identifier of the GameObject to delete")] string target,
+            [ToolParam("How to resolve the target (by_id/by_name/by_path/by_tag/by_layer/by_component)", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
+            var info = new { instanceId = (long)go.GetInstanceID(), name = go.name };
             Undo.DestroyObjectImmediate(go);
-            return $"Deleted GameObject '{name}'";
+            return Response.Success($"Deleted GameObject '{info.name}'.", info);
         }
 
-        [Description("Duplicate a GameObject")]
+        [Description("Duplicate a GameObject and optionally rename the copy.")]
         [SceneEditingTool]
-        public static string DuplicateGameObject(
-            [ToolParam("Name of the GameObject to duplicate")] string name,
-            [ToolParam("Name for the duplicate", Required = false)] string new_name = null)
+        public static object DuplicateGameObject(
+            [ToolParam("Identifier of the GameObject to duplicate")] string target,
+            [ToolParam("Name for the duplicate", Required = false)] string new_name = null,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            var duplicate = Object.Instantiate(go);
-            Undo.RegisterCreatedObjectUndo(duplicate, $"Duplicate {name}");
+            var dup = Object.Instantiate(go);
+            Undo.RegisterCreatedObjectUndo(dup, $"Duplicate {go.name}");
+            dup.name = string.IsNullOrEmpty(new_name) ? go.name + " (Copy)" : new_name;
+            Selection.activeGameObject = dup;
 
-            if (!string.IsNullOrEmpty(new_name))
-                duplicate.name = new_name;
-            else
-                duplicate.name = name + " (Copy)";
-
-            Selection.activeGameObject = duplicate;
-            return $"Duplicated '{name}' as '{duplicate.name}'";
+            return Response.Success($"Duplicated '{go.name}' as '{dup.name}'.",
+                GameObjectSerializer.Describe(dup, includeComponents: false));
         }
 
-        [Description("Rename a GameObject")]
+        [Description("Rename a GameObject.")]
         [SceneEditingTool]
-        public static string RenameGameObject(
-            [ToolParam("Current name of the GameObject")] string name,
-            [ToolParam("New name for the GameObject")] string new_name)
+        public static object RenameGameObject(
+            [ToolParam("Identifier of the GameObject")] string target,
+            [ToolParam("New name")] string new_name,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            Undo.RecordObject(go, $"Rename {name} to {new_name}");
+            var oldName = go.name;
+            Undo.RecordObject(go, $"Rename {oldName} to {new_name}");
             go.name = new_name;
-            return $"Renamed '{name}' to '{new_name}'";
+            return Response.Success($"Renamed '{oldName}' to '{new_name}'.",
+                new { instanceId = (long)go.GetInstanceID(), name = go.name });
         }
 
-        [Description("Set a GameObject's position, rotation, and/or scale")]
+        [Description("Set position, rotation, and/or scale on a GameObject's transform.")]
         [SceneEditingTool]
-        public static string SetTransform(
-            [ToolParam("Name of the GameObject")] string name,
+        public static object SetTransform(
+            [ToolParam("Identifier of the GameObject")] string target,
             [ToolParam("Position as 'x,y,z'", Required = false)] string position = null,
-            [ToolParam("Rotation (euler angles) as 'x,y,z'", Required = false)] string rotation = null,
-            [ToolParam("Scale as 'x,y,z'", Required = false)] string scale = null)
+            [ToolParam("Euler rotation as 'x,y,z'", Required = false)] string rotation = null,
+            [ToolParam("Scale as 'x,y,z'", Required = false)] string scale = null,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            Undo.RecordObject(go.transform, $"Set transform of {name}");
+            Undo.RecordObject(go.transform, $"Set transform of {go.name}");
 
-            if (!string.IsNullOrEmpty(position))
-                go.transform.position = ParseVector3(position);
-            if (!string.IsNullOrEmpty(rotation))
-                go.transform.eulerAngles = ParseVector3(rotation);
-            if (!string.IsNullOrEmpty(scale))
-                go.transform.localScale = ParseVector3(scale);
+            if (!string.IsNullOrEmpty(position)) go.transform.position = ParseVector3(position);
+            if (!string.IsNullOrEmpty(rotation)) go.transform.eulerAngles = ParseVector3(rotation);
+            if (!string.IsNullOrEmpty(scale)) go.transform.localScale = ParseVector3(scale);
 
-            return $"Updated transform of '{name}': pos={go.transform.position}, rot={go.transform.eulerAngles}, scale={go.transform.localScale}";
+            return Response.Success($"Updated transform of '{go.name}'.", new
+            {
+                instanceId = (long)go.GetInstanceID(),
+                position = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z },
+                rotation = new { x = go.transform.eulerAngles.x, y = go.transform.eulerAngles.y, z = go.transform.eulerAngles.z },
+                scale = new { x = go.transform.localScale.x, y = go.transform.localScale.y, z = go.transform.localScale.z }
+            });
         }
 
-        [Description("Set the parent of a GameObject")]
+        [Description("Reparent a GameObject. Pass empty parent to unparent.")]
         [SceneEditingTool]
-        public static string SetParent(
-            [ToolParam("Name of the child GameObject")] string child_name,
-            [ToolParam("Name of the parent GameObject (empty to unparent)", Required = false)] string parent_name = null)
+        public static object SetParent(
+            [ToolParam("Child GameObject identifier")] string child,
+            [ToolParam("Parent GameObject identifier (empty to unparent)", Required = false)] string parent = null,
+            [ToolParam("How to resolve targets", Required = false)] string find_method = null)
         {
-            var child = FindSceneGameObject(child_name);
-            if (child == null)
-                return $"Error: GameObject '{child_name}' not found";
+            var childGo = ObjectsHelper.FindObject(child, find_method);
+            if (childGo == null)
+                return Response.Error("CHILD_NOT_FOUND", new { target = child, find_method });
 
-            if (string.IsNullOrEmpty(parent_name))
+            if (string.IsNullOrEmpty(parent))
             {
-                Undo.SetTransformParent(child.transform, null, $"Unparent {child_name}");
-                return $"Unparented '{child_name}'";
+                Undo.SetTransformParent(childGo.transform, null, $"Unparent {childGo.name}");
+                return Response.Success($"Unparented '{childGo.name}'.");
             }
 
-            var parent = FindSceneGameObject(parent_name);
-            if (parent == null)
-                return $"Error: Parent '{parent_name}' not found";
+            var parentGo = ObjectsHelper.FindObject(parent, find_method);
+            if (parentGo == null)
+                return Response.Error("PARENT_NOT_FOUND", new { target = parent, find_method });
 
-            Undo.SetTransformParent(child.transform, parent.transform, $"Parent {child_name} to {parent_name}");
-            return $"Set parent of '{child_name}' to '{parent_name}'";
+            // Cycle protection: prevent setting parent to self or own descendant
+            var t = parentGo.transform;
+            while (t != null)
+            {
+                if (t == childGo.transform)
+                    return Response.Error("CYCLE_DETECTED",
+                        new { reason = "Parent is a descendant of child; would create a cycle." });
+                t = t.parent;
+            }
+
+            Undo.SetTransformParent(childGo.transform, parentGo.transform, $"Parent {childGo.name} to {parentGo.name}");
+            return Response.Success($"Parented '{childGo.name}' to '{parentGo.name}'.",
+                new { childInstanceId = (long)childGo.GetInstanceID(), parentInstanceId = (long)parentGo.GetInstanceID() });
         }
 
-        [Description("Add a component to a GameObject")]
+        [Description("Add a component to a GameObject. Returns the new component's instanceId.")]
         [SceneEditingTool]
-        public static string AddComponent(
-            [ToolParam("Name of the GameObject")] string name,
-            [ToolParam("Full component type name (e.g. 'Rigidbody', 'BoxCollider', 'AudioSource')")] string component_type)
+        public static object AddComponent(
+            [ToolParam("Identifier of the GameObject")] string target,
+            [ToolParam("Component type name (e.g. 'Rigidbody', 'BoxCollider', 'AudioSource')")] string component_type,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            var type = FindComponentType(component_type);
+            var type = TypeResolver.ResolveComponent(component_type);
             if (type == null)
-                return $"Error: Component type '{component_type}' not found";
+                return Response.Error("COMPONENT_TYPE_NOT_FOUND", new { component_type });
 
             var comp = Undo.AddComponent(go, type);
-            return comp != null
-                ? $"Added {component_type} to '{name}'"
-                : $"Error: Failed to add {component_type}";
+            if (comp == null)
+                return Response.Error("ADD_COMPONENT_FAILED", new { component_type, target = go.name });
+
+            return Response.Success($"Added {component_type} to '{go.name}'.",
+                new { gameObjectInstanceId = (long)go.GetInstanceID(),
+                      componentInstanceId = (long)comp.GetInstanceID(),
+                      type = comp.GetType().Name });
         }
 
-        [Description("Set tag and/or layer of a GameObject")]
+        [Description("Set tag and/or layer on a GameObject.")]
         [SceneEditingTool]
-        public static string SetTagAndLayer(
-            [ToolParam("Name of the GameObject")] string name,
+        public static object SetTagAndLayer(
+            [ToolParam("Identifier of the GameObject")] string target,
             [ToolParam("Tag to set", Required = false)] string tag = null,
-            [ToolParam("Layer name to set", Required = false)] string layer = null)
+            [ToolParam("Layer name to set", Required = false)] string layer = null,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            Undo.RecordObject(go, $"Set tag/layer of {name}");
+            Undo.RecordObject(go, $"Set tag/layer of {go.name}");
+            var changes = new List<string>();
+            var warnings = new List<string>();
 
-            var result = new List<string>();
             if (!string.IsNullOrEmpty(tag))
             {
-                go.tag = tag;
-                result.Add($"tag={tag}");
+                try { go.tag = tag; changes.Add($"tag={tag}"); }
+                catch (UnityException) { warnings.Add($"Tag '{tag}' is not defined; use add_tag first."); }
             }
             if (!string.IsNullOrEmpty(layer))
             {
-                int layerIndex = LayerMask.NameToLayer(layer);
-                if (layerIndex >= 0)
-                {
-                    go.layer = layerIndex;
-                    result.Add($"layer={layer}");
-                }
-                else
-                {
-                    result.Add($"layer '{layer}' not found");
-                }
+                int idx = LayerMask.NameToLayer(layer);
+                if (idx >= 0) { go.layer = idx; changes.Add($"layer={layer}"); }
+                else warnings.Add($"Layer '{layer}' is not defined; use add_layer first.");
             }
 
-            return $"Set {string.Join(", ", result)} on '{name}'";
+            return Response.Success($"Updated '{go.name}'.", new
+            {
+                instanceId = (long)go.GetInstanceID(),
+                changes,
+                warnings
+            });
         }
 
-        [Description("Set active state of a GameObject")]
+        [Description("Activate or deactivate a GameObject.")]
         [SceneEditingTool]
-        public static string SetActive(
-            [ToolParam("Name of the GameObject")] string name,
-            [ToolParam("true to activate, false to deactivate")] string active)
+        public static object SetActive(
+            [ToolParam("Identifier of the GameObject")] string target,
+            [ToolParam("true to activate, false to deactivate")] string active,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
             bool isActive = active == "true" || active == "1";
-            Undo.RecordObject(go, $"Set active {name}");
+            Undo.RecordObject(go, $"Set active {go.name}");
             go.SetActive(isActive);
-            return $"Set '{name}' active = {isActive}";
+            return Response.Success($"Set '{go.name}' active = {isActive}.",
+                new { instanceId = (long)go.GetInstanceID(), activeSelf = go.activeSelf });
         }
 
-        [Description("Find and list GameObjects by name pattern")]
+        [Description("Find GameObjects by id/name/path/tag/layer/component. Returns full structured results so the agent can chain by_id calls.")]
         [ReadOnlyTool]
-        public static string FindGameObjects(
-            [ToolParam("Search query (name or partial name)")] string query)
+        public static object FindGameObjects(
+            [ToolParam("Search query (id, name, path, tag name, layer name/index, or component type)")] string query,
+            [ToolParam("Search method (by_id/by_name/by_path/by_tag/by_layer/by_component)", Required = false)] string find_method = null,
+            [ToolParam("Include inactive objects", Required = false)] string include_inactive = null,
+            [ToolParam("Limit results to children of this GameObject identifier (used with find_method=by_*)", Required = false)] string in_parent = null,
+            [ToolParam("Maximum results to return (default 50)", Required = false)] string max = "50")
         {
-            var allObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-            var results = new List<string>();
-            var lowerQuery = query.ToLowerInvariant();
-
-            foreach (var go in allObjects)
+            bool inactive = include_inactive == "true" || include_inactive == "1";
+            GameObject root = null;
+            if (!string.IsNullOrEmpty(in_parent))
             {
-                if (go.name.ToLowerInvariant().Contains(lowerQuery))
-                {
-                    results.Add($"- {go.name} (pos: {go.transform.position}, active: {go.activeSelf})");
-                }
-                if (results.Count >= 50) break;
+                root = ObjectsHelper.FindObject(in_parent, null, searchInactive: inactive);
+                if (root == null)
+                    return Response.Error("PARENT_NOT_FOUND", new { in_parent });
             }
 
-            return results.Count > 0
-                ? $"Found {results.Count} objects:\n{string.Join("\n", results)}"
-                : "No objects found matching the query.";
+            var matches = ObjectsHelper.FindObjects(query, find_method, findAll: true,
+                searchInactive: inactive, searchInChildren: root != null, root: root);
+
+            int.TryParse(max, out var cap);
+            if (cap <= 0) cap = 50;
+            if (matches.Count > cap)
+                matches = matches.GetRange(0, cap);
+
+            return Response.Success($"Found {matches.Count} object(s).", GameObjectSerializer.DescribeMany(matches));
         }
 
-        [Description("Get detailed info about a specific GameObject")]
+        [Description("Get full info on a GameObject: transform, components (with instance ids), active state, tag, layer.")]
         [ReadOnlyTool]
-        public static string GetGameObjectInfo(
-            [ToolParam("Name of the GameObject")] string name)
+        public static object GetGameObjectInfo(
+            [ToolParam("Identifier of the GameObject")] string target,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null,
+            [ToolParam("Include immediate children list", Required = false)] string include_children = null)
         {
-            var go = FindSceneGameObject(name);
+            var go = ObjectsHelper.FindObject(target, find_method, searchInactive: true);
             if (go == null)
-                return $"Error: GameObject '{name}' not found";
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            var info = new System.Text.StringBuilder();
-            info.AppendLine($"Name: {go.name}");
-            info.AppendLine($"Active: {go.activeSelf}");
-            info.AppendLine($"Tag: {go.tag}");
-            info.AppendLine($"Layer: {LayerMask.LayerToName(go.layer)}");
-            info.AppendLine($"Position: {go.transform.position}");
-            info.AppendLine($"Rotation: {go.transform.eulerAngles}");
-            info.AppendLine($"Scale: {go.transform.localScale}");
-            info.AppendLine($"Children: {go.transform.childCount}");
-            info.AppendLine($"Components:");
-
-            foreach (var comp in go.GetComponents<Component>())
-            {
-                if (comp != null)
-                    info.AppendLine($"  - {comp.GetType().Name}");
-            }
-
-            return info.ToString();
+            bool kids = include_children == "true" || include_children == "1";
+            return Response.Success($"GameObject '{go.name}'.",
+                GameObjectSerializer.Describe(go, includeComponents: true, includeChildren: kids));
         }
 
-        private static GameObject FindSceneGameObject(string name)
-        {
-            if (string.IsNullOrEmpty(name))
-                return null;
-
-            var go = GameObject.Find(name);
-            if (go != null)
-                return go;
-
-            foreach (var candidate in Resources.FindObjectsOfTypeAll<GameObject>())
-            {
-                if (!candidate.scene.IsValid())
-                    continue;
-
-                if (candidate.hideFlags == HideFlags.NotEditable || candidate.hideFlags == HideFlags.HideAndDontSave)
-                    continue;
-
-                if (candidate.name == name)
-                    return candidate;
-            }
-
-            return null;
-        }
+        // -------- Helpers --------
 
         private static Vector3 ParseVector3(string value)
         {
@@ -322,38 +319,6 @@ namespace Funplay.Editor.Tools.Builtins
                     float.Parse(parts[2].Trim(), System.Globalization.CultureInfo.InvariantCulture));
             }
             return Vector3.zero;
-        }
-
-        private static System.Type FindComponentType(string typeName)
-        {
-            // Try common Unity types first
-            var type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.CoreModule");
-            if (type != null) return type;
-
-            type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.PhysicsModule");
-            if (type != null) return type;
-
-            type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.AudioModule");
-            if (type != null) return type;
-
-            type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.AnimationModule");
-            if (type != null) return type;
-
-            type = System.Type.GetType($"UnityEngine.{typeName}, UnityEngine.UIModule");
-            if (type != null) return type;
-
-            type = System.Type.GetType($"UnityEngine.UI.{typeName}, UnityEngine.UI");
-            if (type != null) return type;
-
-            // Search all loaded assemblies
-            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                type = asm.GetType(typeName) ?? asm.GetType($"UnityEngine.{typeName}");
-                if (type != null && typeof(Component).IsAssignableFrom(type))
-                    return type;
-            }
-
-            return null;
         }
     }
 }

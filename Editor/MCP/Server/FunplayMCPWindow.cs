@@ -1819,13 +1819,21 @@ namespace Funplay.Editor.MCP.Server
                     "Use Unity MCP as the source of truth for Editor state, scene hierarchy, prefab references, runtime objects, compilation status, and Play Mode behavior.",
                     "Locate the real Unity project root and active scene before editing.",
                     "Inspect hierarchy, prefab paths, selected objects, and relevant component references through MCP before changing user-named objects.",
+                    "Tool returns are structured JSON: `{success, message, data}` for success and `{success: false, code, error, data}` for errors. Parse `data` and check `code` (UPPERCASE_SNAKE_CASE) for branching — do not pattern-match free-form text.",
+                    "Prefer `instanceId` returned by tools for follow-up calls. Pass it back via the `find_method=by_id` (or auto-detect when the value parses as an integer). This is more reliable than re-resolving by `name` when scenes contain duplicates.",
+                    "Use the `find_method` parameter on GameObject/Component tools to choose how a target is resolved: `by_id`, `by_name`, `by_path`, `by_tag`, `by_layer`, `by_component`, or `by_id_or_name_or_path`. Default auto-detect picks `by_id` for integers, `by_path` for slashed strings, otherwise `by_name`.",
+                    "When a GameObject has multiple components of the same type, target a specific one with `component_instance_id` instead of the type name to avoid hitting the wrong component.",
+                    "Set component fields with `set_component_property(ies)`: it now writes through SerializedObject, so `[SerializeField] private` fields are reachable. Pass Object references as JSON `{\"fileID\": <instanceId>}` (preferred) or `{\"assetPath\": \"Assets/...\"}`. The response reports per-field success/failure.",
+                    "Inspect editor-level state through dedicated tools: `get_selection`, `set_selection`, `get_prefab_stage`, `get_active_tool`, `get_windows`, `get_tags`, `get_layers`, `get_build_settings`. Do not write `execute_code` snippets just to read this.",
+                    "When no specialized MCP tool covers an editor action, try `execute_menu_item` (e.g. 'GameObject/2D Object/Sprite', 'Window/Layouts/Default', 'Edit/Project Settings...') before falling back to `execute_code`.",
                     "When Tool Exposure uses the default `core` profile, rely on the focused workflow tools: `execute_code`, recompilation, Play Mode control, hierarchy, console logs, screenshots, input simulation, and performance inspection.",
                     "When Tool Exposure uses the default `full` profile, all registered MCP tools are available. Prefer specific tools for simple scene, asset, GameObject, component, prefab, camera, UI, package, animation, file, or visual-feedback operations.",
                     "If Tool Exposure has been customized and a named tool is unavailable, adapt to the exposed tool list and report which expected tool is missing.",
                     "Choose the correct edit surface: source files with normal repo tools, scene objects through Unity APIs and saved scenes, prefab assets through `PrefabUtility.LoadPrefabContents` and `SaveAsPrefabAsset`.",
+                    "For `execute_code`, prefer the IFunplayCommand template over the legacy `static string Run()`: implement `IFunplayCommand` and use `ctx.RegisterObjectCreation`, `ctx.RegisterObjectModification`, `ctx.DestroyObject` so created/modified objects participate in editor Undo automatically. Use `ctx.Log` / `ctx.LogWarning` / `ctx.LogError` for traceable output that comes back in the response (without polluting the Unity console).",
                     "Batch related Unity-side changes in one guarded `execute_code` snippet, with explicit missing-object reports and concise before/after values.",
-                    "After external changes under `Assets/`, `Packages/`, or `ProjectSettings/`, call `request_recompile`.",
-                    "Call `wait_for_compilation` before Play Mode, `execute_code`, screenshots, or conclusions.",
+                    "`execute_code` now refreshes the asset database and waits for compilation to finish before compiling the snippet, so external file edits are picked up automatically. For other tools that depend on the latest assemblies (e.g. `get_compilation_errors`), still call `request_recompile` after external file edits.",
+                    "Call `wait_for_compilation` before Play Mode, screenshots, or conclusions when a previous edit has not yet been confirmed.",
                     "Read back exact values from Unity after changes, not only success messages.",
                     "Test actual behavior in Unity through hierarchy, console logs, Play Mode, UI interactions, screenshots, or targeted `execute_code` checks.",
                     "When Unity readback and text files disagree for serialized scene or prefab state, trust Unity readback and investigate the asset path.",
@@ -2134,11 +2142,14 @@ This file is managed by Funplay MCP for Unity.
 ## Codex workflow rules
 
 - Prefer project-local Funplay skills under `.codex/skills/`.
-- Use `execute_code` as the primary Unity automation tool.
-- Inspect Unity objects through MCP before changing user-named scene or prefab targets.
+- Use `execute_code` as the primary Unity automation tool. For new snippets, implement `IFunplayCommand` and use `ctx.RegisterObjectCreation` / `RegisterObjectModification` / `DestroyObject` so changes participate in Undo automatically.
+- Inspect Unity objects through MCP before changing user-named scene or prefab targets. Carry the returned `instanceId` into follow-up calls (`find_method=by_id`) instead of re-resolving by name.
+- Tool returns are structured JSON (`{{success, message, data}}` / `{{success: false, code, error, data}}`). Branch on `code`, not free-form text.
+- Set component fields with `set_component_property(ies)` — it picks up `[SerializeField] private` fields and accepts Object references as `{{""fileID"": <instanceId>}}` or `{{""assetPath"": ""Assets/...""}}`.
+- Read editor state through dedicated tools (`get_selection`, `get_prefab_stage`, `get_tags`, `get_layers`, `get_build_settings`); use `execute_menu_item` before falling back to ad-hoc `execute_code`.
 - Save only the scene or prefab assets intentionally modified, then read back exact values.
 - With default `core` exposure, use the focused workflow tools. With default `full` exposure, prefer specific MCP tools for simple editor operations.
-- Call `request_recompile` immediately after editing scripts or `Assets/` files outside Unity.
+- `execute_code` refreshes the asset database and waits for compilation before running. For other tools that depend on freshly compiled code, still call `request_recompile` after external script edits.
 - If recompilation triggers a domain reload, call `get_reload_recovery_status`.
 - Avoid changing `Library/`, `Temp/`, `Logs/`, or `obj/`.
 
@@ -2171,11 +2182,14 @@ This file is managed by Funplay MCP for Unity for Claude Code.
 ## Preferred workflow
 
 - Use Funplay MCP tools for Unity editor state and automation.
-- Use `execute_code` for non-trivial Unity orchestration.
-- Inspect Unity objects through MCP before changing user-named scene or prefab targets.
+- Use `execute_code` for non-trivial Unity orchestration. For new snippets, implement `IFunplayCommand` and use `ctx.RegisterObjectCreation` / `RegisterObjectModification` / `DestroyObject` so changes participate in Undo and `ctx.Log` for traceable output.
+- Inspect Unity objects through MCP before changing user-named scene or prefab targets. Carry the returned `instanceId` into follow-up calls (`find_method=by_id`) instead of re-resolving by name.
+- Tool returns are structured JSON (`{{success, message, data}}` / `{{success: false, code, error, data}}`). Branch on `code`, not free-form text.
+- Set component fields with `set_component_property(ies)` — it picks up `[SerializeField] private` fields and accepts Object references as `{{""fileID"": <instanceId>}}` or `{{""assetPath"": ""Assets/...""}}`.
+- Read editor state through `get_selection`, `get_prefab_stage`, `get_tags`, `get_layers`, `get_build_settings`; try `execute_menu_item` before writing ad-hoc `execute_code`.
 - Save only the scene or prefab assets intentionally modified, then read back exact values.
 - With default `core` exposure, use the focused workflow tools. With default `full` exposure, prefer specific MCP tools for simple editor operations.
-- Call `request_recompile` after external script edits before assuming Unity imported the latest code.
+- `execute_code` refreshes assets and waits for compilation before running. For other tools that depend on freshly compiled code, still call `request_recompile` after external script edits.
 - If domain reload interrupts a request, follow with `get_reload_recovery_status`.
 - Additional installed skills are available under `.claude/skills/`.
 

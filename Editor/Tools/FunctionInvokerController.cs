@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using UnityEngine;
 
 namespace Funplay.Editor.Tools
@@ -63,20 +64,38 @@ namespace Funplay.Editor.Tools
 
         private static async Task<string> NormalizeResultAsync(object result)
         {
-            if (result is Task<string> stringTask)
-            {
-                return await stringTask;
-            }
-
             if (result is Task task)
             {
                 await task;
 
                 var resultProperty = task.GetType().GetProperty("Result");
-                return resultProperty?.GetValue(task)?.ToString() ?? "OK";
+                if (resultProperty == null)
+                    return "OK";
+
+                var taskResult = resultProperty.GetValue(task);
+                return SerializeResult(taskResult);
             }
 
-            return result?.ToString() ?? "OK";
+            return SerializeResult(result);
+        }
+
+        // Tools may return either a plain string (backward-compatible behavior) or a structured
+        // object (e.g. via Response.Success/Error) which we JSON-encode for the client.
+        private static string SerializeResult(object value)
+        {
+            if (value == null)
+                return "OK";
+            if (value is string s)
+                return s;
+            try
+            {
+                return JsonConvert.SerializeObject(value);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Funplay] Failed to serialize tool result: {ex.Message}");
+                return value.ToString() ?? "OK";
+            }
         }
 
         private object[] BuildArguments(MethodInfo method, Dictionary<string, string> parameters)

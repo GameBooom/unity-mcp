@@ -1,455 +1,217 @@
 // Copyright (C) Funplay. Licensed under MIT.
 using System;
-using System.Collections.Generic;
-using System.Reflection;
-using System.Text;
+using System.Linq;
 using DescriptionAttribute = System.ComponentModel.DescriptionAttribute;
+using Funplay.Editor.Tools.Helpers;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
 namespace Funplay.Editor.Tools.Builtins
 {
+    /// <summary>
+    /// Read and write component fields through SerializedObject — picks up
+    /// <c>[SerializeField] private</c>, supports Object references via
+    /// <c>{"fileID": instanceId}</c>, returns per-field success so agents can
+    /// recover from partial writes.
+    /// </summary>
     [ToolProvider("ComponentProperty")]
     internal static class ComponentPropertyFunctions
     {
-        [Description("Get all properties and fields of a component on a GameObject. " +
-                     "Returns a readable list of property names, types, and current values. " +
-                     "Use find_mode='name' to search by name, 'tag' to search by tag, 'path' for hierarchy path.")]
+        [Description("List components on a GameObject. Each entry includes its instanceId so subsequent " +
+                     "set_component_property calls can disambiguate when a GameObject has multiple components of the same type.")]
         [ReadOnlyTool]
-        public static string GetComponentProperties(
-            [ToolParam("GameObject identifier (name, tag, or hierarchy path)")] string game_object,
-            [ToolParam("Component type name (e.g. 'Rigidbody', 'Transform', 'PlayerController')")] string component,
-            [ToolParam("How to find the GameObject: 'name', 'tag', or 'path'", Required = false)] string find_mode = "name")
+        public static object ListComponents(
+            [ToolParam("GameObject identifier (instance id, name, path, tag…)")] string target,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            try
+            var go = ObjectsHelper.FindObject(target, find_method, searchInactive: true);
+            if (go == null)
+                return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
+
+            var items = go.GetComponents<Component>()
+                .Where(c => c != null)
+                .Select(c => new { instanceId = (long)c.GetInstanceID(), type = c.GetType().Name, fullType = c.GetType().FullName })
+                .ToList();
+
+            return Response.Success($"{items.Count} component(s) on '{go.name}'.", new
             {
-                var go = FindGameObject(game_object, find_mode);
-                if (go == null)
-                    return $"Error: GameObject '{game_object}' not found (mode: {find_mode})";
-
-                var comp = FindComponent(go, component);
-                if (comp == null)
-                    return $"Error: Component '{component}' not found on '{go.name}'. " +
-                           $"Available: {GetComponentList(go)}";
-
-                var sb = new StringBuilder();
-                sb.AppendLine($"[{comp.GetType().Name}] on '{go.name}':");
-
-                var props = comp.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
-                foreach (var prop in props)
-                {
-                    if (!prop.CanRead) continue;
-                    if (prop.GetIndexParameters().Length > 0) continue;
-                    if (prop.GetCustomAttribute<ObsoleteAttribute>() != null) continue;
-                    try
-                    {
-                        var val = prop.GetValue(comp);
-                        sb.AppendLine($"  {prop.Name} ({prop.PropertyType.Name}) = {FormatValue(val)}");
-                    }
-                    catch { }
-                }
-
-                var fields = comp.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance);
-                foreach (var field in fields)
-                {
-                    if (field.GetCustomAttribute<ObsoleteAttribute>() != null) continue;
-                    try
-                    {
-                        var val = field.GetValue(comp);
-                        sb.AppendLine($"  {field.Name} ({field.FieldType.Name}) = {FormatValue(val)}");
-                    }
-                    catch { }
-                }
-
-                return sb.ToString();
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
+                gameObject = new { instanceId = (long)go.GetInstanceID(), name = go.name },
+                components = items
+            });
         }
 
-        [Description("Set a property or field value on a component. " +
-                     "Supports common types: int, float, bool, string, Vector3 ('x,y,z'), Color ('r,g,b,a'), enums.")]
-        [SceneEditingTool]
-        public static string SetComponentProperty(
-            [ToolParam("GameObject identifier (name, tag, or hierarchy path)")] string game_object,
-            [ToolParam("Component type name (e.g. 'Rigidbody', 'Transform')")] string component,
-            [ToolParam("Property or field name to set")] string property,
-            [ToolParam("New value as string")] string value,
-            [ToolParam("How to find the GameObject: 'name', 'tag', or 'path'", Required = false)] string find_mode = "name")
-        {
-            try
-            {
-                var go = FindGameObject(game_object, find_mode);
-                if (go == null)
-                    return $"Error: GameObject '{game_object}' not found (mode: {find_mode})";
-
-                var comp = FindComponent(go, component);
-                if (comp == null)
-                    return $"Error: Component '{component}' not found on '{go.name}'";
-
-                Undo.RecordObject(comp, $"Set {property} on {go.name}");
-
-                var prop = comp.GetType().GetProperty(property,
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                if (prop != null && prop.CanWrite)
-                {
-                    var converted = ConvertToType(value, prop.PropertyType);
-                    prop.SetValue(comp, converted);
-                    EditorUtility.SetDirty(comp);
-                    return $"Set {comp.GetType().Name}.{prop.Name} = {FormatValue(prop.GetValue(comp))}";
-                }
-
-                var field = comp.GetType().GetField(property,
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                if (field != null)
-                {
-                    var converted = ConvertToType(value, field.FieldType);
-                    field.SetValue(comp, converted);
-                    EditorUtility.SetDirty(comp);
-                    return $"Set {comp.GetType().Name}.{field.Name} = {FormatValue(field.GetValue(comp))}";
-                }
-
-                return $"Error: Property/field '{property}' not found on {comp.GetType().Name}. " +
-                       $"Check spelling or use get_component_properties to list available properties.";
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
-        }
-
-        [Description("List all components attached to a GameObject.")]
+        [Description("Get all serialized properties on a component, including [SerializeField] private fields. " +
+                     "Component can be addressed by type name on a GameObject, or directly by component instanceId.")]
         [ReadOnlyTool]
-        public static string ListComponents(
-            [ToolParam("GameObject identifier (name, tag, or hierarchy path)")] string game_object,
-            [ToolParam("How to find the GameObject: 'name', 'tag', or 'path'", Required = false)] string find_mode = "name")
+        public static object GetComponentProperties(
+            [ToolParam("GameObject identifier (omit if using component_instance_id)", Required = false)] string target = null,
+            [ToolParam("Component type name (e.g. 'Rigidbody'). Omit if using component_instance_id.", Required = false)] string component = null,
+            [ToolParam("Component instanceId (alternative to target+component)", Required = false)] string component_instance_id = null,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            try
-            {
-                var go = FindGameObject(game_object, find_mode);
-                if (go == null)
-                    return $"Error: GameObject '{game_object}' not found (mode: {find_mode})";
+            var resolved = ResolveComponent(target, component, component_instance_id, find_method);
+            if (resolved.Error != null) return resolved.Error;
 
-                var sb = new StringBuilder();
-                sb.AppendLine($"Components on '{go.name}':");
-                var components = go.GetComponents<Component>();
-                foreach (var comp in components)
+            var props = ComponentSerializer.ReadProperties(resolved.Component);
+            return Response.Success(
+                $"{props.Count} properties on {resolved.Component.GetType().Name}.",
+                new
                 {
-                    if (comp == null) continue;
-                    sb.AppendLine($"  - {comp.GetType().Name}");
-                }
-                return sb.ToString();
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
+                    componentInstanceId = (long)resolved.Component.GetInstanceID(),
+                    type = resolved.Component.GetType().Name,
+                    gameObject = new { instanceId = (long)resolved.Component.gameObject.GetInstanceID(), name = resolved.Component.gameObject.name },
+                    properties = props
+                });
         }
 
-        [Description("Set multiple properties on a component in a single call. " +
-                     "Properties are specified as a JSON object: {\"property1\":\"value1\",\"property2\":\"value2\"}. " +
-                     "More efficient than calling set_component_property multiple times.")]
+        [Description("Set a single property or field on a component. " +
+                     "Use simple JSON for value (e.g. '5', 'true', '\"text\"', '[1,2,3]'). " +
+                     "For Object references pass {\"fileID\": <instanceId>} or {\"assetPath\": \"Assets/...\"}.")]
         [SceneEditingTool]
-        public static string SetComponentProperties(
-            [ToolParam("GameObject identifier (name, tag, or hierarchy path)")] string game_object,
-            [ToolParam("Component type name (e.g. 'Rigidbody', 'Transform')")] string component,
-            [ToolParam("JSON object of property-value pairs, e.g. {\"mass\":\"5\",\"isKinematic\":\"true\"}")] string properties,
-            [ToolParam("How to find the GameObject: 'name', 'tag', or 'path'", Required = false)] string find_mode = "name")
+        public static object SetComponentProperty(
+            [ToolParam("GameObject identifier (omit if using component_instance_id)", Required = false)] string target = null,
+            [ToolParam("Component type name (omit if using component_instance_id)", Required = false)] string component = null,
+            [ToolParam("Property/field name to set")] string property = null,
+            [ToolParam("New value as JSON literal")] string value = null,
+            [ToolParam("Component instanceId (alternative to target+component)", Required = false)] string component_instance_id = null,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
         {
-            try
+            if (string.IsNullOrEmpty(property))
+                return Response.Error("PROPERTY_REQUIRED");
+            if (value == null)
+                return Response.Error("VALUE_REQUIRED");
+
+            var resolved = ResolveComponent(target, component, component_instance_id, find_method);
+            if (resolved.Error != null) return resolved.Error;
+
+            JToken token;
+            try { token = ParseJsonValue(value); }
+            catch (Exception ex) { return Response.Error($"INVALID_VALUE_JSON: {ex.Message}"); }
+
+            var props = new JObject { [property] = token };
+            var results = ComponentSerializer.WriteProperties(resolved.Component, props,
+                $"Set {property} on {resolved.Component.GetType().Name}");
+
+            var first = results.Count > 0 ? results[0] : null;
+            if (first == null || !first.Success)
             {
-                var go = FindGameObject(game_object, find_mode);
-                if (go == null)
-                    return $"Error: GameObject '{game_object}' not found (mode: {find_mode})";
+                return Response.Error("PROPERTY_SET_FAILED",
+                    new { property, error = first?.Error ?? "unknown" });
+            }
 
-                var comp = FindComponent(go, component);
-                if (comp == null)
-                    return $"Error: Component '{component}' not found on '{go.name}'";
+            return Response.Success($"Set {resolved.Component.GetType().Name}.{property}.",
+                new { componentInstanceId = (long)resolved.Component.GetInstanceID(), property });
+        }
 
-                var propDict = ParseJsonProperties(properties);
-                if (propDict == null || propDict.Count == 0)
-                    return "Error: Could not parse properties JSON. Expected format: {\"prop\":\"value\"}";
+        [Description("Set multiple properties on a component in one call. " +
+                     "Pass `properties` as a JSON object: {\"mass\": 5, \"isKinematic\": true, \"material\": {\"fileID\": 12345}}. " +
+                     "Returns per-field success so partial failures are diagnosable.")]
+        [SceneEditingTool]
+        public static object SetComponentProperties(
+            [ToolParam("GameObject identifier (omit if using component_instance_id)", Required = false)] string target = null,
+            [ToolParam("Component type name (omit if using component_instance_id)", Required = false)] string component = null,
+            [ToolParam("JSON object of property→value pairs")] string properties = null,
+            [ToolParam("Component instanceId (alternative to target+component)", Required = false)] string component_instance_id = null,
+            [ToolParam("How to resolve target", Required = false)] string find_method = null)
+        {
+            if (string.IsNullOrWhiteSpace(properties))
+                return Response.Error("PROPERTIES_REQUIRED");
 
-                Undo.RecordObject(comp, $"Set properties on {go.name}");
+            var resolved = ResolveComponent(target, component, component_instance_id, find_method);
+            if (resolved.Error != null) return resolved.Error;
 
-                var results = new StringBuilder();
-                int successCount = 0;
-                int failCount = 0;
+            JObject jobj;
+            try { jobj = JObject.Parse(properties); }
+            catch (Exception ex) { return Response.Error($"INVALID_PROPERTIES_JSON: {ex.Message}"); }
 
-                foreach (var kvp in propDict)
+            var results = ComponentSerializer.WriteProperties(resolved.Component, jobj,
+                $"Set properties on {resolved.Component.GetType().Name}");
+
+            int success = results.Count(r => r.Success);
+            int fail = results.Count - success;
+            return Response.Success(
+                $"Applied {success} of {results.Count} field(s) on {resolved.Component.GetType().Name}.",
+                new
                 {
-                    string propName = kvp.Key;
-                    string propValue = kvp.Value;
-
-                    var prop = comp.GetType().GetProperty(propName,
-                        BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    if (prop != null && prop.CanWrite)
-                    {
-                        try
-                        {
-                            var converted = ConvertToType(propValue, prop.PropertyType);
-                            prop.SetValue(comp, converted);
-                            results.AppendLine($"  OK: {prop.Name} = {FormatValue(prop.GetValue(comp))}");
-                            successCount++;
-                            continue;
-                        }
-                        catch (Exception ex2)
-                        {
-                            results.AppendLine($"  FAIL: {propName} - {ex2.Message}");
-                            failCount++;
-                            continue;
-                        }
-                    }
-
-                    var field = comp.GetType().GetField(propName,
-                        BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    if (field != null)
-                    {
-                        try
-                        {
-                            var converted = ConvertToType(propValue, field.FieldType);
-                            field.SetValue(comp, converted);
-                            results.AppendLine($"  OK: {field.Name} = {FormatValue(field.GetValue(comp))}");
-                            successCount++;
-                            continue;
-                        }
-                        catch (Exception ex2)
-                        {
-                            results.AppendLine($"  FAIL: {propName} - {ex2.Message}");
-                            failCount++;
-                            continue;
-                        }
-                    }
-
-                    results.AppendLine($"  FAIL: {propName} - property/field not found");
-                    failCount++;
-                }
-
-                EditorUtility.SetDirty(comp);
-                return $"Set {successCount} properties on {comp.GetType().Name} ({failCount} failed):\n{results}";
-            }
-            catch (Exception ex)
-            {
-                return $"Error: {ex.Message}";
-            }
+                    componentInstanceId = (long)resolved.Component.GetInstanceID(),
+                    successCount = success,
+                    failCount = fail,
+                    fields = results
+                });
         }
 
-        // --- Helper methods ---
+        // -------- Helpers --------
 
-        private static GameObject FindGameObject(string identifier, string mode)
+        private struct ResolvedComponent
         {
-            switch (mode.ToLowerInvariant())
-            {
-                case "tag":
-                    return GameObject.FindWithTag(identifier);
-
-                case "path":
-                    var obj = FindGameObjectIncludingInactive(identifier);
-                    if (obj != null) return obj;
-                    foreach (var root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
-                    {
-                        var found = root.transform.Find(identifier);
-                        if (found != null) return found.gameObject;
-                    }
-                    return null;
-
-                case "name":
-                default:
-                    var go = FindGameObjectIncludingInactive(identifier);
-                    if (go != null) return go;
-                    foreach (var root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
-                    {
-                        var result = FindInChildren(root.transform, identifier);
-                        if (result != null) return result.gameObject;
-                    }
-                    return null;
-            }
+            public Component Component;
+            public object Error;
         }
 
-        private static Transform FindInChildren(Transform parent, string name)
+        private static ResolvedComponent ResolveComponent(string target, string componentName, string componentInstanceId, string findMethod)
         {
-            if (parent.name == name) return parent;
-            for (int i = 0; i < parent.childCount; i++)
+            // Direct component instanceId path (preferred when GameObject has multiple of same type)
+            if (!string.IsNullOrEmpty(componentInstanceId) && long.TryParse(componentInstanceId, out var cid))
             {
-                var result = FindInChildren(parent.GetChild(i), name);
-                if (result != null) return result;
+                var c = ObjectsHelper.FindComponentById(cid);
+                if (c == null)
+                    return new ResolvedComponent { Error = Response.Error("COMPONENT_NOT_FOUND",
+                        new { component_instance_id = componentInstanceId }) };
+                return new ResolvedComponent { Component = c };
             }
-            return null;
+
+            if (string.IsNullOrEmpty(target))
+                return new ResolvedComponent { Error = Response.Error("TARGET_REQUIRED",
+                    new { hint = "Pass either target+component or component_instance_id." }) };
+
+            var go = ObjectsHelper.FindObject(target, findMethod, searchInactive: true);
+            if (go == null)
+                return new ResolvedComponent { Error = Response.Error("TARGET_NOT_FOUND",
+                    new { target, find_method = findMethod }) };
+
+            if (string.IsNullOrEmpty(componentName))
+                return new ResolvedComponent { Error = Response.Error("COMPONENT_REQUIRED") };
+
+            // Try TypeResolver-driven exact lookup first (handles full names, namespaced types)
+            var type = TypeResolver.ResolveComponent(componentName);
+            if (type != null)
+            {
+                var c = go.GetComponent(type);
+                if (c != null) return new ResolvedComponent { Component = c };
+            }
+
+            // Fallback: case-insensitive name match across attached components
+            foreach (var c in go.GetComponents<Component>())
+            {
+                if (c == null) continue;
+                if (string.Equals(c.GetType().Name, componentName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(c.GetType().FullName, componentName, StringComparison.OrdinalIgnoreCase))
+                    return new ResolvedComponent { Component = c };
+            }
+
+            var available = string.Join(", ", go.GetComponents<Component>()
+                .Where(c => c != null).Select(c => c.GetType().Name));
+            return new ResolvedComponent
+            {
+                Error = Response.Error("COMPONENT_NOT_FOUND_ON_TARGET",
+                    new { target = go.name, component = componentName, available })
+            };
         }
 
-        private static GameObject FindGameObjectIncludingInactive(string identifier)
+        // Accept loose values: bare numbers/booleans, quoted strings, JSON objects/arrays.
+        private static JToken ParseJsonValue(string raw)
         {
-            if (string.IsNullOrEmpty(identifier))
-                return null;
-
-            var go = GameObject.Find(identifier);
-            if (go != null)
-                return go;
-
-            foreach (var candidate in Resources.FindObjectsOfTypeAll<GameObject>())
-            {
-                if (!candidate.scene.IsValid())
-                    continue;
-
-                if (candidate.hideFlags == HideFlags.NotEditable || candidate.hideFlags == HideFlags.HideAndDontSave)
-                    continue;
-
-                if (candidate.name == identifier)
-                    return candidate;
-            }
-
-            return null;
-        }
-
-        private static Component FindComponent(GameObject go, string componentName)
-        {
-            var components = go.GetComponents<Component>();
-            foreach (var comp in components)
-            {
-                if (comp == null) continue;
-                if (string.Equals(comp.GetType().Name, componentName, StringComparison.OrdinalIgnoreCase))
-                    return comp;
-            }
-            foreach (var comp in components)
-            {
-                if (comp == null) continue;
-                if (comp.GetType().Name.IndexOf(componentName, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return comp;
-            }
-            return null;
-        }
-
-        private static string GetComponentList(GameObject go)
-        {
-            var names = new List<string>();
-            foreach (var comp in go.GetComponents<Component>())
-            {
-                if (comp != null) names.Add(comp.GetType().Name);
-            }
-            return string.Join(", ", names);
-        }
-
-        private static object ConvertToType(string value, Type targetType)
-        {
-            if (targetType == typeof(string)) return value;
-            if (targetType == typeof(int)) return int.Parse(value);
-            if (targetType == typeof(float)) return float.Parse(value);
-            if (targetType == typeof(double)) return double.Parse(value);
-            if (targetType == typeof(bool)) return value.ToLower() == "true" || value == "1";
-            if (targetType == typeof(Vector2))
-            {
-                var p = value.Trim('(', ')').Split(',');
-                return new Vector2(float.Parse(p[0].Trim()), float.Parse(p[1].Trim()));
-            }
-            if (targetType == typeof(Vector3))
-            {
-                var p = value.Trim('(', ')').Split(',');
-                return new Vector3(float.Parse(p[0].Trim()), float.Parse(p[1].Trim()), float.Parse(p[2].Trim()));
-            }
-            if (targetType == typeof(Color))
-            {
-                var p = value.Trim('(', ')').Split(',');
-                if (p.Length >= 4)
-                    return new Color(float.Parse(p[0].Trim()), float.Parse(p[1].Trim()),
-                        float.Parse(p[2].Trim()), float.Parse(p[3].Trim()));
-                if (p.Length >= 3)
-                    return new Color(float.Parse(p[0].Trim()), float.Parse(p[1].Trim()),
-                        float.Parse(p[2].Trim()));
-                return Color.white;
-            }
-            if (targetType.IsEnum) return Enum.Parse(targetType, value, true);
-            return Convert.ChangeType(value, targetType);
-        }
-
-        /// <summary>
-        /// Simple JSON object parser for property-value pairs. No external dependency needed.
-        /// </summary>
-        private static Dictionary<string, string> ParseJsonProperties(string json)
-        {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrEmpty(json)) return result;
-
-            json = json.Trim();
-            if (!json.StartsWith("{") || !json.EndsWith("}")) return result;
-            json = json.Substring(1, json.Length - 2).Trim();
-            if (string.IsNullOrEmpty(json)) return result;
-
-            // Simple state-machine parser for {"key":"value", ...}
-            int i = 0;
-            while (i < json.Length)
-            {
-                // Skip whitespace
-                while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
-                if (i >= json.Length) break;
-
-                // Parse key
-                string key = ParseJsonString(json, ref i);
-                if (key == null) break;
-
-                // Skip colon
-                while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
-                if (i >= json.Length || json[i] != ':') break;
-                i++;
-
-                // Parse value
-                while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
-                string val = ParseJsonString(json, ref i);
-                if (val == null) break;
-
-                result[key] = val;
-
-                // Skip comma
-                while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
-                if (i < json.Length && json[i] == ',') i++;
-            }
-
-            return result;
-        }
-
-        private static string ParseJsonString(string json, ref int i)
-        {
-            if (i >= json.Length || json[i] != '"') return null;
-            i++; // skip opening quote
-            var sb = new StringBuilder();
-            while (i < json.Length)
-            {
-                if (json[i] == '\\' && i + 1 < json.Length)
-                {
-                    sb.Append(json[i + 1]);
-                    i += 2;
-                }
-                else if (json[i] == '"')
-                {
-                    i++; // skip closing quote
-                    return sb.ToString();
-                }
-                else
-                {
-                    sb.Append(json[i]);
-                    i++;
-                }
-            }
-            return null;
-        }
-
-        private static string FormatValue(object val)
-        {
-            if (val == null) return "null";
-            if (val is Vector3 v3) return $"({v3.x:F2}, {v3.y:F2}, {v3.z:F2})";
-            if (val is Vector2 v2) return $"({v2.x:F2}, {v2.y:F2})";
-            if (val is Quaternion q) return $"({q.eulerAngles.x:F1}, {q.eulerAngles.y:F1}, {q.eulerAngles.z:F1})";
-            if (val is Color c) return $"({c.r:F2}, {c.g:F2}, {c.b:F2}, {c.a:F2})";
-            if (val is bool b) return b ? "true" : "false";
-            if (val is float f) return f.ToString("F3");
-            if (val is double d) return d.ToString("F3");
-            if (val is UnityEngine.Object uobj)
-            {
-                if (uobj == null) return "null (destroyed)";
-                return uobj.name;
-            }
-            return val.ToString();
+            raw = raw.Trim();
+            if (raw.Length == 0) return JValue.CreateString(string.Empty);
+            if (raw.StartsWith("{") || raw.StartsWith("[") || raw.StartsWith("\""))
+                return JToken.Parse(raw);
+            if (bool.TryParse(raw, out var b)) return new JValue(b);
+            if (long.TryParse(raw, out var l)) return new JValue(l);
+            if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return new JValue(d);
+            return new JValue(raw); // treat as string
         }
     }
 }

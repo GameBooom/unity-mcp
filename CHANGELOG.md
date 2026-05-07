@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## [0.3.0] - 2026-05-06
+
+### Added
+- New foundation helpers under `Editor/Tools/Helpers/`: `ObjectsHelper` (unified by_id/by_name/by_path/by_tag/by_layer/by_component locator with searchInactive / searchInChildren / findAll, prefab-stage aware), `ComponentSerializer` (SerializedObject-based read/write that picks up `[SerializeField] private`, Object references via `{"fileID": instanceId}`, Vector/Quaternion/Color/Enum/Array), `TypeResolver` (TypeCache-backed O(1) component type lookup), `Response` (structured `{success, message, data}` / `{success, code, error, data}` envelope), `EditorReadyHelper` (refresh + wait for compilation), `GameObjectSerializer` (structured payloads with `instanceId` so agents can chain `by_id` calls).
+- New `EditorState` tool provider: `get_editor_state`, `get_selection`, `set_selection`, `get_prefab_stage`, `get_active_tool`, `set_active_tool`, `get_windows`, `get_tags`, `add_tag`, `remove_tag`, `get_layers`, `add_layer`, `get_build_settings`.
+- New `MenuItem` tool provider: `execute_menu_item`, `validate_menu_item` — drive any editor menu including third-party packages without writing dedicated wrappers.
+- New `IFunplayCommand` + `ExecutionContext` API for `execute_code`. Snippets that implement `IFunplayCommand` get `ctx.RegisterObjectCreation` / `RegisterObjectModification` / `DestroyObject` (auto-Undo + tracked) and `ctx.Log` / `LogWarning` / `LogError` (returned in the response).
+- `ComponentPropertyFunctions`: new `component_instance_id` parameter lets tools target a specific component when a GameObject has multiple of the same type.
+
+### Changed
+- All `GameObject` tools now resolve targets through `ObjectsHelper` and accept a new `find_method` parameter (defaults to auto-detect: id → path → name).
+- `GameObject` and `ComponentProperty` tools now return structured JSON (`Response.Success(...)`) instead of free-form strings, with `instanceId` included so agents can chain `by_id` lookups reliably.
+- `ComponentPropertyFunctions.SetComponentProperty(ies)` now writes through `SerializedObject`, so `[SerializeField] private` fields and Object references work; partial writes return per-field success.
+- `execute_code` now calls `EditorReadyHelper.RefreshAndWaitForReady` before compiling, so external file edits are picked up automatically — no separate `request_recompile` needed in most flows.
+- `FunctionInvokerController` now serializes non-string tool returns to JSON via Newtonsoft, so tools can return `Response.Success(...)` or any object.
+- `unity-mcp-workflow` project skill rules updated to cover structured JSON returns, `instanceId` chaining, `find_method`, the new SerializedProperty-backed component setter, the IFunplayCommand template, editor-state tools, and `execute_menu_item` as the preferred fallback before `execute_code`. Generated `AGENTS.md` / `CLAUDE.md` templates updated to match. Existing installed skills must be regenerated via `Funplay > Project Skills` to pick up the new content.
+- `core` profile expanded from 19 to 29 tools: added `get_editor_state`, `get_selection`, `set_selection`, `get_prefab_stage`, `find_game_objects`, `list_components`, `get_component_properties`, `set_component_property`, `set_component_properties`, `execute_menu_item`. Lower-frequency editor-state tools (tag/layer mutation, window listing, build settings, active-tool control, `validate_menu_item`) remain `full`-only.
+
+### Breaking
+- `GameObjectFunctions` parameter renames for clarity now that resolution is method-driven: `name` → `target` (delete/duplicate/rename/set_transform/set_active/add_component/set_tag_and_layer/get_game_object_info), `parent_name` → `parent`, `child_name` → `child`. The new `find_method` parameter is optional everywhere.
+
 ## [0.2.0] - 2026-04-30
 
 ### Changed

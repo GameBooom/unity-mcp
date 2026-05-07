@@ -33,7 +33,20 @@ namespace Funplay.Editor.MCP.Server
             "get_reload_recovery_status",
             "enter_play_mode",
             "exit_play_mode",
-            "get_time_scale"
+            "get_time_scale",
+            // Editor state -- high-frequency reads/writes
+            "get_editor_state",
+            "get_selection",
+            "set_selection",
+            "get_prefab_stage",
+            // Object location + component editing -- the new structured surface
+            "find_game_objects",
+            "list_components",
+            "get_component_properties",
+            "set_component_property",
+            "set_component_properties",
+            // Menu items -- safer fallback than execute_code for editor actions
+            "execute_menu_item"
         };
 
         public static IReadOnlyCollection<string> DefaultCoreTools => CoreTools;
