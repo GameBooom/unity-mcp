@@ -1,9 +1,11 @@
 // Copyright (C) Funplay. Licensed under MIT.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 
 using DescriptionAttribute = System.ComponentModel.DescriptionAttribute;
+using Funplay.Editor.Tools.Helpers;
 using UnityEditor;
 using UnityEngine;
 
@@ -13,6 +15,7 @@ namespace Funplay.Editor.Tools.Builtins
     internal static class ScreenshotFunctions
     {
         private const string ImagePrefix = "data:image/png;base64,";
+        private const int MultiviewMaxAngles = 36;
 
         [Description("Capture a screenshot of the Game View (what the main camera sees). Returns a base64-encoded PNG image.")]
         [ReadOnlyTool]
@@ -60,6 +63,211 @@ namespace Funplay.Editor.Tools.Builtins
             height = Mathf.Clamp(height, 64, 4096);
 
             return CaptureFromCamera(camera, width, height);
+        }
+
+        [Description("Capture the scene from multiple synthesized camera angles around a target. " +
+                     "Useful for visual reviews (\"show me this prefab/object from every side\") without manually " +
+                     "moving the editor camera. Two modes:\n" +
+                     "  - surround: 6 axis-aligned views (front/back/left/right/top/bottom).\n" +
+                     "  - orbit: cartesian product of evenly-spaced azimuth angles × explicit elevations.\n" +
+                     "Target defaults to the active scene's bounds center; pass target_name to focus on a specific GameObject. " +
+                     "Each capture is rendered with a temporary camera (current scene cameras are not modified). " +
+                     "Returns base64 PNG images in data.captures[] together with the angle metadata of each.")]
+        [ReadOnlyTool]
+        public static object CaptureMultiview(
+            [ToolParam("Name (or hierarchy path) of the GameObject to focus on. Empty/null uses the active scene's bounds center.", Required = false)] string target_name = null,
+            [ToolParam("Capture mode: surround (6 axis views, default) or orbit (azimuth × elevations grid).", Required = false)] string mode = "surround",
+            [ToolParam("Per-frame width in pixels. Default 512.", Required = false)] int width = 512,
+            [ToolParam("Per-frame height in pixels. Default 512.", Required = false)] int height = 512,
+            [ToolParam("Orbit only: number of evenly-spaced azimuth samples (1-36). Default 8.", Required = false)] int orbit_angles = 8,
+            [ToolParam("Orbit only: comma-separated elevations in degrees (e.g. \"0,30,-15\"). Default \"0,30,-15\".", Required = false)] string orbit_elevations = "0,30,-15",
+            [ToolParam("Camera distance from target. 0 = auto-fit based on target bounds. Default 0.", Required = false)] float orbit_distance = 0f,
+            [ToolParam("Camera vertical field of view in degrees. Default 60.", Required = false)] float orbit_fov = 60f)
+        {
+            width = Mathf.Clamp(width, 64, 4096);
+            height = Mathf.Clamp(height, 64, 4096);
+            orbit_fov = Mathf.Clamp(orbit_fov, 10f, 170f);
+
+            var modeNormalized = (mode ?? "surround").Trim().ToLowerInvariant();
+            if (modeNormalized != "surround" && modeNormalized != "orbit")
+                return Response.Error("INVALID_MODE",
+                    new { provided = mode, accepted = new[] { "surround", "orbit" } });
+
+            if (!TryResolveMultiviewTarget(target_name, out var targetCenter, out var targetExtent, out var targetName, out var errorCode, out var errorDetail))
+                return Response.Error(errorCode, errorDetail);
+
+            var distance = orbit_distance > 0f
+                ? orbit_distance
+                : Mathf.Max(targetExtent * 2.5f, 1f);
+
+            List<(float azimuth, float elevation)> angles;
+            if (modeNormalized == "surround")
+            {
+                // Front, back, right, left, top, bottom
+                angles = new List<(float, float)>
+                {
+                    (0f, 0f), (180f, 0f), (90f, 0f), (-90f, 0f), (0f, 89f), (0f, -89f),
+                };
+            }
+            else
+            {
+                var clampedAngles = Mathf.Clamp(orbit_angles, 1, MultiviewMaxAngles);
+                var elevations = ParseElevations(orbit_elevations);
+                if (elevations.Count == 0)
+                    return Response.Error("INVALID_ELEVATIONS",
+                        new { provided = orbit_elevations, hint = "Provide a comma-separated list of degrees (e.g. \"0,30,-15\")." });
+
+                angles = new List<(float, float)>(clampedAngles * elevations.Count);
+                for (int e = 0; e < elevations.Count; e++)
+                {
+                    var elevation = Mathf.Clamp(elevations[e], -89f, 89f);
+                    for (int a = 0; a < clampedAngles; a++)
+                    {
+                        var azimuth = 360f * a / clampedAngles;
+                        angles.Add((azimuth, elevation));
+                    }
+                }
+            }
+
+            var cameraHostObject = new GameObject("_FunplayMultiviewCamera") { hideFlags = HideFlags.HideAndDontSave };
+            Camera camera = null;
+            try
+            {
+                camera = cameraHostObject.AddComponent<Camera>();
+                camera.fieldOfView = orbit_fov;
+                camera.nearClipPlane = Mathf.Max(0.01f, distance * 0.01f);
+                camera.farClipPlane = Mathf.Max(distance * 10f, 1000f);
+                camera.clearFlags = CameraClearFlags.Skybox;
+
+                var captures = new List<object>(angles.Count);
+                foreach (var (azimuth, elevation) in angles)
+                {
+                    PositionCameraOnSphere(camera, targetCenter, distance, azimuth, elevation);
+                    var image = CaptureFromCamera(camera, width, height);
+                    captures.Add(new { angle = new { azimuth, elevation }, image });
+                }
+
+                return Response.Success(
+                    $"Captured {captures.Count} multiview frame(s) of '{targetName}' in {modeNormalized} mode.",
+                    new
+                    {
+                        target = new
+                        {
+                            name = targetName,
+                            center = new { x = targetCenter.x, y = targetCenter.y, z = targetCenter.z },
+                            bounds_extent = targetExtent
+                        },
+                        mode = modeNormalized,
+                        distance,
+                        fov = orbit_fov,
+                        per_frame = new { width, height },
+                        count = captures.Count,
+                        captures
+                    });
+            }
+            catch (Exception ex)
+            {
+                return Response.Error("MULTIVIEW_FAILED", new { message = ex.Message });
+            }
+            finally
+            {
+                if (camera != null) UnityEngine.Object.DestroyImmediate(camera);
+                UnityEngine.Object.DestroyImmediate(cameraHostObject);
+            }
+        }
+
+        private static void PositionCameraOnSphere(Camera camera, Vector3 center, float distance, float azimuthDegrees, float elevationDegrees)
+        {
+            var elevation = elevationDegrees * Mathf.Deg2Rad;
+            var azimuth = azimuthDegrees * Mathf.Deg2Rad;
+            var offset = new Vector3(
+                distance * Mathf.Cos(elevation) * Mathf.Sin(azimuth),
+                distance * Mathf.Sin(elevation),
+                distance * Mathf.Cos(elevation) * Mathf.Cos(azimuth));
+            camera.transform.position = center + offset;
+            camera.transform.LookAt(center, Mathf.Abs(elevationDegrees) > 80f ? Vector3.forward : Vector3.up);
+        }
+
+        private static List<float> ParseElevations(string raw)
+        {
+            var result = new List<float>();
+            if (string.IsNullOrWhiteSpace(raw))
+                return result;
+            foreach (var part in raw.Split(','))
+            {
+                var trimmed = part.Trim();
+                if (float.TryParse(trimmed, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var value))
+                    result.Add(value);
+            }
+            return result;
+        }
+
+        private static bool TryResolveMultiviewTarget(
+            string requestedName,
+            out Vector3 center,
+            out float extent,
+            out string resolvedName,
+            out string errorCode,
+            out object errorDetail)
+        {
+            center = Vector3.zero;
+            extent = 1f;
+            resolvedName = null;
+            errorCode = null;
+            errorDetail = null;
+
+            if (!string.IsNullOrWhiteSpace(requestedName))
+            {
+                var go = GameObject.Find(requestedName);
+                if (go == null)
+                {
+                    errorCode = "TARGET_NOT_FOUND";
+                    errorDetail = new { name = requestedName };
+                    return false;
+                }
+                var bounds = ComputeRenderableBounds(go);
+                center = bounds.center;
+                extent = Mathf.Max(bounds.extents.x, bounds.extents.y, bounds.extents.z, 0.25f);
+                resolvedName = go.name;
+                return true;
+            }
+
+            // Fall back to scene-wide bounds.
+            Bounds? merged = null;
+            foreach (var renderer in UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                if (renderer == null || !renderer.gameObject.activeInHierarchy) continue;
+                merged = merged.HasValue ? Encapsulate(merged.Value, renderer.bounds) : renderer.bounds;
+            }
+            if (!merged.HasValue)
+            {
+                errorCode = "EMPTY_SCENE";
+                errorDetail = new { hint = "No active Renderers found. Pass target_name to focus on a specific GameObject." };
+                return false;
+            }
+            center = merged.Value.center;
+            extent = Mathf.Max(merged.Value.extents.x, merged.Value.extents.y, merged.Value.extents.z, 0.25f);
+            resolvedName = "<scene>";
+            return true;
+        }
+
+        private static Bounds ComputeRenderableBounds(GameObject root)
+        {
+            Bounds? merged = null;
+            foreach (var renderer in root.GetComponentsInChildren<Renderer>(false))
+            {
+                merged = merged.HasValue ? Encapsulate(merged.Value, renderer.bounds) : renderer.bounds;
+            }
+            if (merged.HasValue) return merged.Value;
+            // Fall back to transform position with a small default extent.
+            return new Bounds(root.transform.position, Vector3.one);
+        }
+
+        private static Bounds Encapsulate(Bounds a, Bounds b)
+        {
+            a.Encapsulate(b);
+            return a;
         }
 
         private static bool TryResolveGameViewSize(ref int width, ref int height)
