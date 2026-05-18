@@ -18,7 +18,7 @@ namespace Funplay.Editor.Tools.Helpers
             if (go == null) return null;
             return new
             {
-                instanceId = (long)go.GetInstanceID(),
+                instanceId = ObjectIdHelper.GetSerializableId(go),
                 name = go.name,
                 path = ObjectsHelper.GetGameObjectPath(go),
                 activeSelf = go.activeSelf,
@@ -56,7 +56,7 @@ namespace Funplay.Editor.Tools.Helpers
                 props = ComponentSerializer.ReadProperties(c);
             return new
             {
-                instanceId = (long)c.GetInstanceID(),
+                instanceId = ObjectIdHelper.GetSerializableId(c),
                 type = c.GetType().Name,
                 fullType = c.GetType().FullName,
                 properties = props
@@ -75,7 +75,7 @@ namespace Funplay.Editor.Tools.Helpers
                 }
                 list.Add(new
                 {
-                    instanceId = (long)c.GetInstanceID(),
+                    instanceId = ObjectIdHelper.GetSerializableId(c),
                     type = c.GetType().Name,
                     fullType = c.GetType().FullName
                 });
@@ -91,7 +91,7 @@ namespace Funplay.Editor.Tools.Helpers
                 var child = go.transform.GetChild(i).gameObject;
                 list.Add(new
                 {
-                    instanceId = (long)child.GetInstanceID(),
+                    instanceId = ObjectIdHelper.GetSerializableId(child),
                     name = child.name,
                     activeSelf = child.activeSelf,
                     childCount = child.transform.childCount

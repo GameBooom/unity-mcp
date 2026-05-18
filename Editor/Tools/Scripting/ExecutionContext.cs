@@ -1,6 +1,7 @@
 // Copyright (C) Funplay. Licensed under MIT.
 
 using System.Collections.Generic;
+using Funplay.Editor.Tools.Helpers;
 using UnityEditor;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
@@ -27,14 +28,14 @@ namespace Funplay.Editor.Tools.Scripting
         }
 
         private readonly List<LogEntry> _logs = new List<LogEntry>();
-        private readonly List<long> _created = new List<long>();
-        private readonly List<long> _modified = new List<long>();
-        private readonly List<long> _destroyed = new List<long>();
+        private readonly List<object> _created = new List<object>();
+        private readonly List<object> _modified = new List<object>();
+        private readonly List<object> _destroyed = new List<object>();
 
         public IReadOnlyList<LogEntry> Logs => _logs;
-        public IReadOnlyList<long> CreatedInstanceIds => _created;
-        public IReadOnlyList<long> ModifiedInstanceIds => _modified;
-        public IReadOnlyList<long> DestroyedInstanceIds => _destroyed;
+        public IReadOnlyList<object> CreatedInstanceIds => _created;
+        public IReadOnlyList<object> ModifiedInstanceIds => _modified;
+        public IReadOnlyList<object> DestroyedInstanceIds => _destroyed;
 
         /// <summary>Object that the snippet returns explicitly (optional). Serialized into the response.</summary>
         public object ReturnValue { get; set; }
@@ -45,20 +46,20 @@ namespace Funplay.Editor.Tools.Scripting
         {
             if (obj == null) return;
             Undo.RegisterCreatedObjectUndo(obj, "execute_code: create");
-            _created.Add(obj.GetInstanceID());
+            _created.Add(ObjectIdHelper.GetSerializableId(obj));
         }
 
         public void RegisterObjectModification(UnityObject obj)
         {
             if (obj == null) return;
             Undo.RecordObject(obj, "execute_code: modify");
-            _modified.Add(obj.GetInstanceID());
+            _modified.Add(ObjectIdHelper.GetSerializableId(obj));
         }
 
         public void DestroyObject(UnityObject obj)
         {
             if (obj == null) return;
-            _destroyed.Add(obj.GetInstanceID());
+            _destroyed.Add(ObjectIdHelper.GetSerializableId(obj));
             Undo.DestroyObjectImmediate(obj);
         }
 

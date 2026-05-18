@@ -229,6 +229,7 @@ url = "http://127.0.0.1:8765/"
 ```csharp
 using UnityEngine;
 using UnityEditor;
+using Funplay.Editor.Tools.Helpers;
 using Funplay.Editor.Tools.Scripting;
 
 public class CommandScript : IFunplayCommand
@@ -238,7 +239,7 @@ public class CommandScript : IFunplayCommand
         var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
         ctx.RegisterObjectCreation(go);          // 自动 Undo + 追踪
         ctx.Log("Created {0}", go.name);
-        ctx.ReturnValue = new { instanceId = go.GetInstanceID() };
+        ctx.ReturnValue = GameObjectSerializer.Describe(go, includeComponents: false);
     }
 }
 ```

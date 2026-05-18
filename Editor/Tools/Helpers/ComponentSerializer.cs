@@ -94,7 +94,7 @@ namespace Funplay.Editor.Tools.Helpers
                     var o = p.objectReferenceValue;
                     return o == null
                         ? null
-                        : (object)new { fileID = (long)o.GetInstanceID(), name = o.name, type = o.GetType().Name };
+                        : (object)new { fileID = ObjectIdHelper.GetSerializableId(o), name = o.name, type = o.GetType().Name };
                 case SerializedPropertyType.LayerMask:
                     return p.intValue;
                 case SerializedPropertyType.AnimationCurve:
@@ -283,17 +283,17 @@ namespace Funplay.Editor.Tools.Helpers
                 return true;
             }
 
-            long instanceId = 0;
+            string instanceId = null;
             string assetPath = null;
 
             if (value.Type == JTokenType.Integer)
             {
-                instanceId = value.ToObject<long>();
+                instanceId = value.ToString();
             }
             else if (value is JObject obj)
             {
-                if (obj.TryGetValue("fileID", out var fid)) instanceId = fid.ToObject<long>();
-                else if (obj.TryGetValue("instanceId", out var iid)) instanceId = iid.ToObject<long>();
+                if (obj.TryGetValue("fileID", out var fid)) instanceId = fid.ToString();
+                else if (obj.TryGetValue("instanceId", out var iid)) instanceId = iid.ToString();
                 if (obj.TryGetValue("assetPath", out var ap)) assetPath = ap.ToObject<string>();
             }
             else if (value.Type == JTokenType.String)
@@ -302,14 +302,14 @@ namespace Funplay.Editor.Tools.Helpers
             }
 
             UnityEngine.Object resolved = null;
-            if (instanceId != 0)
-                resolved = EditorUtility.InstanceIDToObject((int)instanceId);
+            if (!string.IsNullOrWhiteSpace(instanceId))
+                resolved = ObjectIdHelper.ToObject(instanceId);
             if (resolved == null && !string.IsNullOrEmpty(assetPath))
                 resolved = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
 
             if (resolved == null)
             {
-                error = instanceId != 0
+                error = !string.IsNullOrWhiteSpace(instanceId)
                     ? $"No object with instanceId={instanceId}"
                     : $"Could not load asset at '{assetPath}'";
                 return false;
@@ -406,10 +406,10 @@ namespace Funplay.Editor.Tools.Helpers
             if (targetType == typeof(Vector4) && TryParseVector(token, 4, out var v4)) return new Vector4(v4[0], v4[1], v4[2], v4[3]);
             if (typeof(UnityEngine.Object).IsAssignableFrom(targetType))
             {
-                long id = 0;
-                if (token.Type == JTokenType.Integer) id = token.ToObject<long>();
-                else if (token is JObject jo && jo.TryGetValue("fileID", out var f)) id = f.ToObject<long>();
-                if (id != 0) return EditorUtility.InstanceIDToObject((int)id);
+                string id = null;
+                if (token.Type == JTokenType.Integer) id = token.ToString();
+                else if (token is JObject jo && jo.TryGetValue("fileID", out var f)) id = f.ToString();
+                if (!string.IsNullOrWhiteSpace(id)) return ObjectIdHelper.ToObject(id);
             }
             return token.ToObject(targetType);
         }

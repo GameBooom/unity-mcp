@@ -45,7 +45,7 @@ namespace Funplay.Editor.Tools.Builtins
             var gos = Selection.gameObjects ?? Array.Empty<GameObject>();
             var items = gos.Select(go => new
             {
-                instanceId = (long)go.GetInstanceID(),
+                instanceId = ObjectIdHelper.GetSerializableId(go),
                 name = go.name,
                 path = ObjectsHelper.GetGameObjectPath(go)
             }).ToList();
@@ -53,7 +53,7 @@ namespace Funplay.Editor.Tools.Builtins
             return Response.Success($"Selection contains {items.Count} object(s).", new
             {
                 count = items.Count,
-                activeInstanceId = Selection.activeGameObject != null ? (long)Selection.activeGameObject.GetInstanceID() : 0,
+                activeInstanceId = ObjectIdHelper.GetSerializableId(Selection.activeGameObject),
                 items
             });
         }
@@ -92,7 +92,7 @@ namespace Funplay.Editor.Tools.Builtins
                 $"Selected {picked.Count} object(s){(missing.Count > 0 ? $", {missing.Count} not found" : string.Empty)}.",
                 new
                 {
-                    selected = picked.Select(g => new { instanceId = (long)g.GetInstanceID(), name = g.name }).ToList(),
+                    selected = picked.Select(g => new { instanceId = ObjectIdHelper.GetSerializableId(g), name = g.name }).ToList(),
                     notFound = missing
                 });
         }
@@ -112,7 +112,7 @@ namespace Funplay.Editor.Tools.Builtins
             {
                 open = true,
                 assetPath = stage.assetPath,
-                rootInstanceId = root != null ? (long)root.GetInstanceID() : 0,
+                rootInstanceId = ObjectIdHelper.GetSerializableId(root),
                 rootName = root != null ? root.name : null,
                 mode = stage.mode.ToString(),
                 scene = stage.scene.IsValid() ? stage.scene.name : null

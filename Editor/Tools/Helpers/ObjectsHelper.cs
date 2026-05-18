@@ -77,12 +77,9 @@ namespace Funplay.Editor.Tools.Helpers
             {
                 case MethodById:
                 {
-                    if (long.TryParse(target, out var id))
-                    {
-                        var go = EditorUtility.InstanceIDToObject((int)id) as GameObject;
-                        if (go != null)
-                            results.Add(go);
-                    }
+                    var go = ObjectIdHelper.ToObject(target) as GameObject;
+                    if (go != null)
+                        results.Add(go);
                     break;
                 }
                 case MethodByName:
@@ -190,11 +187,8 @@ namespace Funplay.Editor.Tools.Helpers
                 }
                 case MethodByIdOrNameOrPath:
                 {
-                    if (long.TryParse(target, out var id))
-                    {
-                        var go = EditorUtility.InstanceIDToObject((int)id) as GameObject;
-                        if (go != null) { results.Add(go); break; }
-                    }
+                    var byId = ObjectIdHelper.ToObject(target) as GameObject;
+                    if (byId != null) { results.Add(byId); break; }
                     if (target.Contains('/'))
                     {
                         // Re-enter as path
@@ -272,9 +266,9 @@ namespace Funplay.Editor.Tools.Helpers
         /// Look up a Component by its instance id. Returns null if missing or if the id refers to
         /// something that isn't a Component.
         /// </summary>
-        public static Component FindComponentById(long instanceId)
+        public static Component FindComponentById(string instanceId)
         {
-            return EditorUtility.InstanceIDToObject((int)instanceId) as Component;
+            return ObjectIdHelper.ToObject(instanceId) as Component;
         }
 
         /// <summary>

@@ -227,6 +227,7 @@ Open your AI client and try: *"Create a 3D platformer level with 5 floating plat
 ```csharp
 using UnityEngine;
 using UnityEditor;
+using Funplay.Editor.Tools.Helpers;
 using Funplay.Editor.Tools.Scripting;
 
 public class CommandScript : IFunplayCommand
@@ -236,7 +237,7 @@ public class CommandScript : IFunplayCommand
         var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
         ctx.RegisterObjectCreation(go);          // auto-Undo + tracked
         ctx.Log("Created {0}", go.name);
-        ctx.ReturnValue = new { instanceId = go.GetInstanceID() };
+        ctx.ReturnValue = GameObjectSerializer.Describe(go, includeComponents: false);
     }
 }
 ```

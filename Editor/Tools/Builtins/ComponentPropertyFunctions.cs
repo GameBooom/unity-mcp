@@ -31,12 +31,12 @@ namespace Funplay.Editor.Tools.Builtins
 
             var items = go.GetComponents<Component>()
                 .Where(c => c != null)
-                .Select(c => new { instanceId = (long)c.GetInstanceID(), type = c.GetType().Name, fullType = c.GetType().FullName })
+                .Select(c => new { instanceId = ObjectIdHelper.GetSerializableId(c), type = c.GetType().Name, fullType = c.GetType().FullName })
                 .ToList();
 
             return Response.Success($"{items.Count} component(s) on '{go.name}'.", new
             {
-                gameObject = new { instanceId = (long)go.GetInstanceID(), name = go.name },
+                gameObject = new { instanceId = ObjectIdHelper.GetSerializableId(go), name = go.name },
                 components = items
             });
         }
@@ -58,9 +58,9 @@ namespace Funplay.Editor.Tools.Builtins
                 $"{props.Count} properties on {resolved.Component.GetType().Name}.",
                 new
                 {
-                    componentInstanceId = (long)resolved.Component.GetInstanceID(),
+                    componentInstanceId = ObjectIdHelper.GetSerializableId(resolved.Component),
                     type = resolved.Component.GetType().Name,
-                    gameObject = new { instanceId = (long)resolved.Component.gameObject.GetInstanceID(), name = resolved.Component.gameObject.name },
+                    gameObject = new { instanceId = ObjectIdHelper.GetSerializableId(resolved.Component.gameObject), name = resolved.Component.gameObject.name },
                     properties = props
                 });
         }
@@ -101,7 +101,7 @@ namespace Funplay.Editor.Tools.Builtins
             }
 
             return Response.Success($"Set {resolved.Component.GetType().Name}.{property}.",
-                new { componentInstanceId = (long)resolved.Component.GetInstanceID(), property });
+                new { componentInstanceId = ObjectIdHelper.GetSerializableId(resolved.Component), property });
         }
 
         [Description("Set multiple properties on a component in one call. " +
@@ -134,7 +134,7 @@ namespace Funplay.Editor.Tools.Builtins
                 $"Applied {success} of {results.Count} field(s) on {resolved.Component.GetType().Name}.",
                 new
                 {
-                    componentInstanceId = (long)resolved.Component.GetInstanceID(),
+                    componentInstanceId = ObjectIdHelper.GetSerializableId(resolved.Component),
                     successCount = success,
                     failCount = fail,
                     fields = results
@@ -152,9 +152,9 @@ namespace Funplay.Editor.Tools.Builtins
         private static ResolvedComponent ResolveComponent(string target, string componentName, string componentInstanceId, string findMethod)
         {
             // Direct component instanceId path (preferred when GameObject has multiple of same type)
-            if (!string.IsNullOrEmpty(componentInstanceId) && long.TryParse(componentInstanceId, out var cid))
+            if (!string.IsNullOrEmpty(componentInstanceId))
             {
-                var c = ObjectsHelper.FindComponentById(cid);
+                var c = ObjectsHelper.FindComponentById(componentInstanceId);
                 if (c == null)
                     return new ResolvedComponent { Error = Response.Error("COMPONENT_NOT_FOUND",
                         new { component_instance_id = componentInstanceId }) };

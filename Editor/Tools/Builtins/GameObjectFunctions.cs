@@ -73,7 +73,7 @@ namespace Funplay.Editor.Tools.Builtins
             if (go == null)
                 return Response.Error("TARGET_NOT_FOUND", new { target, find_method });
 
-            var info = new { instanceId = (long)go.GetInstanceID(), name = go.name };
+            var info = new { instanceId = ObjectIdHelper.GetSerializableId(go), name = go.name };
             Undo.DestroyObjectImmediate(go);
             return Response.Success($"Deleted GameObject '{info.name}'.", info);
         }
@@ -113,7 +113,7 @@ namespace Funplay.Editor.Tools.Builtins
             Undo.RecordObject(go, $"Rename {oldName} to {new_name}");
             go.name = new_name;
             return Response.Success($"Renamed '{oldName}' to '{new_name}'.",
-                new { instanceId = (long)go.GetInstanceID(), name = go.name });
+                new { instanceId = ObjectIdHelper.GetSerializableId(go), name = go.name });
         }
 
         [Description("Set position, rotation, and/or scale on a GameObject's transform.")]
@@ -137,7 +137,7 @@ namespace Funplay.Editor.Tools.Builtins
 
             return Response.Success($"Updated transform of '{go.name}'.", new
             {
-                instanceId = (long)go.GetInstanceID(),
+                instanceId = ObjectIdHelper.GetSerializableId(go),
                 position = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z },
                 rotation = new { x = go.transform.eulerAngles.x, y = go.transform.eulerAngles.y, z = go.transform.eulerAngles.z },
                 scale = new { x = go.transform.localScale.x, y = go.transform.localScale.y, z = go.transform.localScale.z }
@@ -177,7 +177,7 @@ namespace Funplay.Editor.Tools.Builtins
 
             Undo.SetTransformParent(childGo.transform, parentGo.transform, $"Parent {childGo.name} to {parentGo.name}");
             return Response.Success($"Parented '{childGo.name}' to '{parentGo.name}'.",
-                new { childInstanceId = (long)childGo.GetInstanceID(), parentInstanceId = (long)parentGo.GetInstanceID() });
+                new { childInstanceId = ObjectIdHelper.GetSerializableId(childGo), parentInstanceId = ObjectIdHelper.GetSerializableId(parentGo) });
         }
 
         [Description("Add a component to a GameObject. Returns the new component's instanceId.")]
@@ -200,8 +200,8 @@ namespace Funplay.Editor.Tools.Builtins
                 return Response.Error("ADD_COMPONENT_FAILED", new { component_type, target = go.name });
 
             return Response.Success($"Added {component_type} to '{go.name}'.",
-                new { gameObjectInstanceId = (long)go.GetInstanceID(),
-                      componentInstanceId = (long)comp.GetInstanceID(),
+                new { gameObjectInstanceId = ObjectIdHelper.GetSerializableId(go),
+                      componentInstanceId = ObjectIdHelper.GetSerializableId(comp),
                       type = comp.GetType().Name });
         }
 
@@ -235,7 +235,7 @@ namespace Funplay.Editor.Tools.Builtins
 
             return Response.Success($"Updated '{go.name}'.", new
             {
-                instanceId = (long)go.GetInstanceID(),
+                instanceId = ObjectIdHelper.GetSerializableId(go),
                 changes,
                 warnings
             });
@@ -256,7 +256,7 @@ namespace Funplay.Editor.Tools.Builtins
             Undo.RecordObject(go, $"Set active {go.name}");
             go.SetActive(isActive);
             return Response.Success($"Set '{go.name}' active = {isActive}.",
-                new { instanceId = (long)go.GetInstanceID(), activeSelf = go.activeSelf });
+                new { instanceId = ObjectIdHelper.GetSerializableId(go), activeSelf = go.activeSelf });
         }
 
         [Description("Find GameObjects by id/name/path/tag/layer/component. Returns full structured results so the agent can chain by_id calls.")]
