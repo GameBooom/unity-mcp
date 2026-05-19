@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Funplay.Editor.DI;
+using Funplay.Editor.Services;
 using Funplay.Editor.Settings;
 using Funplay.Editor.Tools;
 
@@ -19,7 +20,12 @@ namespace Funplay.Editor.MCP.Server
         private ISettingsController _settingsController;
         private MCPServerService _mcpServer;
         private VisualElement _mainContainer;
+        private VisualElement _updateContainer;
         private Label _statusLabel;
+        private Label _versionLabel;
+        private Label _updateStatusLabel;
+        private Button _updateButton;
+        private ProgressBar _updateProgressBar;
         private ScrollView _logScrollView;
         private MCPConfigTarget[] _mcpTargets;
         private int _selectedTargetIndex;
@@ -48,7 +54,11 @@ namespace Funplay.Editor.MCP.Server
                 return;
             }
 
+            FunplayMCPUpdateChecker.StateChanged -= OnUpdateStateChanged;
+            FunplayMCPUpdateChecker.StateChanged += OnUpdateStateChanged;
+
             BuildUI();
+            FunplayMCPUpdateChecker.MaybeCheckForUpdatesInBackground();
             _mcpServer.InteractionLog.OnEntryAdded += OnLogEntryAdded;
         }
 
@@ -57,6 +67,7 @@ namespace Funplay.Editor.MCP.Server
             if (_mcpServer?.InteractionLog != null)
                 _mcpServer.InteractionLog.OnEntryAdded -= OnLogEntryAdded;
 
+            FunplayMCPUpdateChecker.StateChanged -= OnUpdateStateChanged;
             ClearLogPreviewTextures();
         }
 
@@ -75,12 +86,24 @@ namespace Funplay.Editor.MCP.Server
             rootVisualElement.Add(_mainContainer);
 
             // Title
+            var titleRow = new VisualElement();
+            titleRow.style.flexDirection = FlexDirection.Row;
+            titleRow.style.alignItems = Align.Center;
+            titleRow.style.marginBottom = 8;
+            _mainContainer.Add(titleRow);
+
             var title = new Label("MCP Server");
             title.style.fontSize = 16;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             title.style.color = Color.white;
-            title.style.marginBottom = 8;
-            _mainContainer.Add(title);
+            title.style.flexGrow = 1;
+            titleRow.Add(title);
+
+            _versionLabel = new Label($"v{PackageVersionUtility.CurrentVersion}");
+            _versionLabel.style.fontSize = 11;
+            _versionLabel.style.color = new Color(0.7f, 0.7f, 0.7f);
+            _versionLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+            titleRow.Add(_versionLabel);
 
             // Status
             _statusLabel = new Label();
@@ -88,6 +111,8 @@ namespace Funplay.Editor.MCP.Server
             _statusLabel.style.marginBottom = 10;
             _mainContainer.Add(_statusLabel);
             RefreshStatus();
+
+            BuildUpdateSection();
 
             // Enable toggle
             var toggle = new Toggle("Enable MCP Server");
@@ -268,6 +293,59 @@ namespace Funplay.Editor.MCP.Server
 
             // Interaction Log Section
             BuildLogSection();
+        }
+
+        private void BuildUpdateSection()
+        {
+            _updateContainer = new VisualElement();
+            _updateContainer.style.display = DisplayStyle.None;
+            _updateContainer.style.backgroundColor = new Color(0.23f, 0.20f, 0.13f);
+            _updateContainer.style.borderLeftWidth = 3;
+            _updateContainer.style.borderLeftColor = new Color(1f, 0.75f, 0.3f);
+            _updateContainer.style.borderTopLeftRadius = 4;
+            _updateContainer.style.borderTopRightRadius = 4;
+            _updateContainer.style.borderBottomLeftRadius = 4;
+            _updateContainer.style.borderBottomRightRadius = 4;
+            _updateContainer.style.paddingLeft = 8;
+            _updateContainer.style.paddingRight = 8;
+            _updateContainer.style.paddingTop = 6;
+            _updateContainer.style.paddingBottom = 6;
+            _updateContainer.style.marginBottom = 10;
+
+            var updateRow = new VisualElement();
+            updateRow.style.flexDirection = FlexDirection.Row;
+            updateRow.style.alignItems = Align.Center;
+            _updateContainer.Add(updateRow);
+
+            _updateStatusLabel = new Label();
+            _updateStatusLabel.style.fontSize = 11;
+            _updateStatusLabel.style.color = new Color(0.95f, 0.88f, 0.68f);
+            _updateStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+            _updateStatusLabel.style.flexGrow = 1;
+            updateRow.Add(_updateStatusLabel);
+
+            _updateButton = new Button(FunplayMCPUpdateChecker.UpdateToLatestFromWindow);
+            _updateButton.text = "Update";
+            _updateButton.style.height = 24;
+            _updateButton.style.minWidth = 86;
+            _updateButton.style.marginLeft = 8;
+            _updateButton.style.backgroundColor = new Color(0.82f, 0.48f, 0.18f);
+            _updateButton.style.color = Color.white;
+            updateRow.Add(_updateButton);
+
+            _updateProgressBar = new ProgressBar
+            {
+                lowValue = 0f,
+                highValue = 1f,
+                value = 0f
+            };
+            _updateProgressBar.style.display = DisplayStyle.None;
+            _updateProgressBar.style.height = 16;
+            _updateProgressBar.style.marginTop = 6;
+            _updateContainer.Add(_updateProgressBar);
+
+            _mainContainer.Add(_updateContainer);
+            RefreshUpdateUI();
         }
 
         private void BuildLogSection()
@@ -467,6 +545,53 @@ namespace Funplay.Editor.MCP.Server
                 _statusLabel.text = "Stopped";
                 _statusLabel.style.color = new Color(0.6f, 0.6f, 0.6f);
             }
+        }
+
+        private void OnUpdateStateChanged()
+        {
+            EditorApplication.delayCall += RefreshUpdateUI;
+        }
+
+        private void RefreshUpdateUI()
+        {
+            if (_updateContainer == null || _updateStatusLabel == null || _updateButton == null || _updateProgressBar == null)
+                return;
+
+            var state = FunplayMCPUpdateChecker.CurrentState;
+            if (_versionLabel != null)
+                _versionLabel.text = $"v{state.CurrentVersion}";
+
+            var showUpdatePanel = state.HasUpdateAvailable || state.IsUpdating || state.UpdateStarted;
+            _updateContainer.style.display = showUpdatePanel ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!showUpdatePanel)
+                return;
+
+            if (state.IsUpdating || state.UpdateStarted)
+            {
+                _updateStatusLabel.text = string.IsNullOrEmpty(state.StatusMessage)
+                    ? $"Updating to version {state.LatestVersion}..."
+                    : state.StatusMessage;
+            }
+            else
+            {
+                var installDescription = string.IsNullOrEmpty(state.InstallDescription)
+                    ? string.Empty
+                    : $" ({state.InstallDescription})";
+                _updateStatusLabel.text = $"Version {state.LatestVersion} is available{installDescription}.";
+            }
+
+            var showButton = state.HasUpdateAvailable && !state.IsUpdating && !state.UpdateStarted;
+            _updateButton.style.display = showButton ? DisplayStyle.Flex : DisplayStyle.None;
+            _updateButton.text = string.IsNullOrEmpty(state.LatestVersion)
+                ? "Update"
+                : $"Update to v{state.LatestVersion}";
+
+            var showProgress = state.IsUpdating || state.UpdateStarted;
+            _updateProgressBar.style.display = showProgress ? DisplayStyle.Flex : DisplayStyle.None;
+            _updateProgressBar.value = Mathf.Clamp01(state.Progress);
+            _updateProgressBar.title = string.IsNullOrEmpty(state.StatusMessage)
+                ? "Updating..."
+                : state.StatusMessage;
         }
 
         private void RefreshConfigStatus()
@@ -1834,6 +1959,8 @@ namespace Funplay.Editor.MCP.Server
                     "Batch related Unity-side changes in one guarded `execute_code` snippet, with explicit missing-object reports and concise before/after values.",
                     "`execute_code` now refreshes the asset database and waits for compilation to finish before compiling the snippet, so external file edits are picked up automatically. For other tools that depend on the latest assemblies (e.g. `get_compilation_errors`), still call `request_recompile` after external file edits.",
                     "Call `wait_for_compilation` before Play Mode, screenshots, or conclusions when a previous edit has not yet been confirmed.",
+                    "After `enter_play_mode`, the MCP HTTP server briefly drops while Unity reloads the domain. Before the next tool call, poll a cheap tool such as `tools/list` or `get_reload_recovery_status` until the server responds again — do not assume the connection is immediately ready.",
+                    "`request_recompile` is rejected while Unity is in Play Mode — Unity does not process script compilation or domain reloads while playing. Call `exit_play_mode` first, then retry `request_recompile`.",
                     "Read back exact values from Unity after changes, not only success messages.",
                     "Test actual behavior in Unity through hierarchy, console logs, Play Mode, UI interactions, screenshots, or targeted `execute_code` checks.",
                     "When Unity readback and text files disagree for serialized scene or prefab state, trust Unity readback and investigate the asset path.",
@@ -2150,6 +2277,8 @@ This file is managed by Funplay MCP for Unity.
 - Save only the scene or prefab assets intentionally modified, then read back exact values.
 - With default `core` exposure, use the focused workflow tools. With default `full` exposure, prefer specific MCP tools for simple editor operations.
 - `execute_code` refreshes the asset database and waits for compilation before running. For other tools that depend on freshly compiled code, still call `request_recompile` after external script edits.
+- `request_recompile` is rejected while Unity is in Play Mode. Call `exit_play_mode` first, then retry.
+- After `enter_play_mode`, the HTTP server briefly drops while Unity reloads the domain. Poll `tools/list` or `get_reload_recovery_status` until it responds again before issuing the next tool call.
 - If recompilation triggers a domain reload, call `get_reload_recovery_status`.
 - Avoid changing `Library/`, `Temp/`, `Logs/`, or `obj/`.
 
@@ -2190,6 +2319,8 @@ This file is managed by Funplay MCP for Unity for Claude Code.
 - Save only the scene or prefab assets intentionally modified, then read back exact values.
 - With default `core` exposure, use the focused workflow tools. With default `full` exposure, prefer specific MCP tools for simple editor operations.
 - `execute_code` refreshes assets and waits for compilation before running. For other tools that depend on freshly compiled code, still call `request_recompile` after external script edits.
+- `request_recompile` is rejected while Unity is in Play Mode. Call `exit_play_mode` first, then retry.
+- After `enter_play_mode`, the HTTP server briefly drops while Unity reloads the domain. Poll `tools/list` or `get_reload_recovery_status` until it responds again before issuing the next tool call.
 - If domain reload interrupts a request, follow with `get_reload_recovery_status`.
 - Additional installed skills are available under `.claude/skills/`.
 
@@ -2405,12 +2536,15 @@ return ""Scene saved: size "" + before + "" -> "" + rect.sizeDelta;
 
 After external C# or asset file edits:
 
-1. Call `request_recompile`.
-2. Call `wait_for_compilation`.
-3. Read console or compilation errors before continuing.
-4. If a domain reload drops the request, call `get_reload_recovery_status` when available, re-scan the MCP endpoint if needed, then continue from `wait_for_compilation`.
+1. If Unity is in Play Mode, call `exit_play_mode` first — `request_recompile` is rejected during play because Unity does not run script compilation or domain reloads while playing.
+2. Call `request_recompile`.
+3. Call `wait_for_compilation`.
+4. Read console or compilation errors before continuing.
+5. If a domain reload drops the request, call `get_reload_recovery_status` when available, re-scan the MCP endpoint if needed, then continue from `wait_for_compilation`.
 
 Do not treat a disconnected request as a successful compile.
+
+After `enter_play_mode`, the HTTP server is briefly unreachable while Unity reloads the domain. Before issuing the next tool call, poll a cheap endpoint such as `tools/list` (or `get_reload_recovery_status` if exposed) until you get a response — do not assume the connection survives the Play Mode transition.
 
 ## Verification Checklist
 
