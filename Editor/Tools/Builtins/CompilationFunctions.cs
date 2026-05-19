@@ -63,6 +63,12 @@ namespace Funplay.Editor.Tools.Builtins
         public static async Task<string> RequestRecompile(
             [ToolParam("Maximum seconds to wait for compilation", Required = false)] int timeout_seconds = 30)
         {
+            if (EditorApplication.isPlaying)
+            {
+                return "Error: Unity is in Play Mode. Unity does not process script recompilation " +
+                       "or domain reloads while playing. Call exit_play_mode first, then retry request_recompile.";
+            }
+
             MarkExternalSyncPending();
             timeout_seconds = Mathf.Clamp(timeout_seconds, 5, 120);
 

@@ -22,6 +22,8 @@ namespace Funplay.Editor.MCP.Server
         private CancellationTokenSource _cts;
         private readonly int _port;
         private bool _isRunning;
+        private const int StartRetryAttempts = 40;
+        private const int StartRetryDelayMs = 250;
 
         public bool IsRunning => _isRunning;
         public event Action<MCPRequest, Action<MCPResponse>> OnRequestReceived;
@@ -31,31 +33,57 @@ namespace Funplay.Editor.MCP.Server
             _port = port;
         }
 
-        public Task<bool> StartAsync(CancellationToken ct = default)
+        public async Task<bool> StartAsync(CancellationToken ct = default)
         {
-            if (_isRunning) return Task.FromResult(true);
+            if (_isRunning) return true;
 
-            try
+            for (var attempt = 1; attempt <= StartRetryAttempts; attempt++)
             {
-                _listener = new HttpListener();
-                _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
-                _listener.Prefixes.Add($"http://localhost:{_port}/");
-                _listener.Start();
+                try
+                {
+                    ct.ThrowIfCancellationRequested();
 
-                _cts = new CancellationTokenSource();
-                _isRunning = true;
+                    _listener = new HttpListener();
+                    _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+                    _listener.Prefixes.Add($"http://localhost:{_port}/");
+                    _listener.Start();
 
-                _ = Task.Run(() => ListenLoopAsync(_cts.Token), _cts.Token);
+                    _cts = new CancellationTokenSource();
+                    _isRunning = true;
 
-                PluginDebugLogger.Log($"[Funplay MCP Server] HTTP transport started on http://127.0.0.1:{_port}/");
-                return Task.FromResult(true);
+                    _ = Task.Run(() => ListenLoopAsync(_cts.Token), _cts.Token);
+
+                    PluginDebugLogger.Log($"[Funplay MCP Server] HTTP transport started on http://127.0.0.1:{_port}/");
+                    return true;
+                }
+                catch (OperationCanceledException)
+                {
+                    CleanupFailedStart();
+                    _isRunning = false;
+                    return false;
+                }
+                catch (Exception ex) when (IsAddressInUse(ex) && attempt < StartRetryAttempts)
+                {
+                    CleanupFailedStart();
+                    if (attempt == 1)
+                    {
+                        Debug.LogWarning(
+                            $"[Funplay MCP Server] Port {_port} is temporarily in use; retrying for up to {(StartRetryAttempts * StartRetryDelayMs) / 1000f:0.#} seconds.");
+                    }
+
+                    await Task.Delay(StartRetryDelayMs, ct);
+                }
+                catch (Exception ex)
+                {
+                    CleanupFailedStart();
+                    Debug.LogError($"[Funplay MCP Server] Failed to start HTTP transport: {ex.Message}");
+                    _isRunning = false;
+                    return false;
+                }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[Funplay MCP Server] Failed to start HTTP transport: {ex.Message}");
-                _isRunning = false;
-                return Task.FromResult(false);
-            }
+
+            _isRunning = false;
+            return false;
         }
 
         public Task StopAsync()
@@ -79,6 +107,30 @@ namespace Funplay.Editor.MCP.Server
             {
                 Debug.LogError($"[Funplay MCP Server] Error stopping HTTP transport: {ex.Message}");
             }
+        }
+
+        private void CleanupFailedStart()
+        {
+            try
+            {
+                _listener?.Close();
+            }
+            catch
+            {
+                // Best-effort cleanup after a failed bind.
+            }
+            finally
+            {
+                _listener = null;
+            }
+        }
+
+        private static bool IsAddressInUse(Exception ex)
+        {
+            return ex is HttpListenerException listenerException &&
+                   (listenerException.ErrorCode == 48 ||
+                    listenerException.ErrorCode == 98 ||
+                    listenerException.Message.IndexOf("Address already in use", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         private async Task ListenLoopAsync(CancellationToken ct)

@@ -24,8 +24,12 @@ namespace Funplay.Editor.State
 
         private const int MaxConsecutiveResumes = 5;
         private const double ResumeCountResetSeconds = 120;
+        private const double DeferredCompletionTimeoutSeconds = 15;
 
         private static bool _registered;
+        private static bool _deferredCompletionRegistered;
+        private static DateTime _deferredCompletionStartedAt;
+        private static IStateController _deferredCompletionStateController;
 
         /// <summary>
         /// Register to receive reload events. Call once (idempotent).
@@ -68,6 +72,18 @@ namespace Funplay.Editor.State
         public static void ClearPendingFunction()
         {
             SessionState.EraseString(PendingFunctionKey);
+        }
+
+        public static void CompletePendingFunction(IStateController stateController)
+        {
+            if (ShouldDeferPendingCompletion())
+            {
+                DeferPendingCompletion(stateController);
+                return;
+            }
+
+            ClearPendingFunction();
+            stateController?.ReturnToPreviousState();
         }
 
         public static void StoreRecoveryInfo(string toolName, string status, string summary)
@@ -172,18 +188,19 @@ namespace Funplay.Editor.State
             var stateStr = SessionState.GetString(StateKey, "");
             var timestampStr = SessionState.GetString(TimestampKey, "");
             var pendingFunctionStr = SessionState.GetString(PendingFunctionKey, "");
+            var pendingFunction = ParsePendingFunction(pendingFunctionStr);
 
             // Clear after reading
             SessionState.EraseString(StateKey);
             SessionState.EraseString(TimestampKey);
             SessionState.EraseString(PendingFunctionKey);
 
-            if (string.IsNullOrEmpty(stateStr)) return null;
+            if (string.IsNullOrEmpty(stateStr) && pendingFunction == null) return null;
 
             if (!Enum.TryParse<FunplayState>(stateStr, out var state))
-                return null;
+                state = pendingFunction != null ? FunplayState.ExecutingFunction : FunplayState.Initialized;
 
-            if (state == FunplayState.Initialized)
+            if (state == FunplayState.Initialized && pendingFunction == null)
                 return null;
 
             // Discard if too old (> 120 seconds)
@@ -197,9 +214,44 @@ namespace Funplay.Editor.State
             return new InterruptedState
             {
                 State = state,
-                PendingFunction = ParsePendingFunction(pendingFunctionStr),
+                PendingFunction = pendingFunction,
                 Timestamp = ts
             };
+        }
+
+        private static bool ShouldDeferPendingCompletion()
+        {
+            return EditorApplication.isPlayingOrWillChangePlaymode ||
+                   EditorApplication.isCompiling ||
+                   EditorApplication.isUpdating;
+        }
+
+        private static void DeferPendingCompletion(IStateController stateController)
+        {
+            _deferredCompletionStateController = stateController;
+            _deferredCompletionStartedAt = DateTime.Now;
+
+            if (_deferredCompletionRegistered)
+                return;
+
+            _deferredCompletionRegistered = true;
+            EditorApplication.update += CompletePendingWhenEditorIsStable;
+        }
+
+        private static void CompletePendingWhenEditorIsStable()
+        {
+            if (ShouldDeferPendingCompletion() &&
+                (DateTime.Now - _deferredCompletionStartedAt).TotalSeconds < DeferredCompletionTimeoutSeconds)
+            {
+                return;
+            }
+
+            EditorApplication.update -= CompletePendingWhenEditorIsStable;
+            _deferredCompletionRegistered = false;
+
+            ClearPendingFunction();
+            _deferredCompletionStateController?.ReturnToPreviousState();
+            _deferredCompletionStateController = null;
         }
 
         private static PendingFunctionInfo ParsePendingFunction(string pendingFunctionStr)

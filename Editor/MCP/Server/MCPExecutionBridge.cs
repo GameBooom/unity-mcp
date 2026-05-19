@@ -85,8 +85,7 @@ namespace Funplay.Editor.MCP.Server
 
                     PluginDebugLogger.Log($"[Funplay MCP Server] Executing tool: {toolName}");
                     var result = await _invoker.InvokeAsync(functionCall);
-                    DomainReloadHandler.ClearPendingFunction();
-                    _stateController.ReturnToPreviousState();
+                    DomainReloadHandler.CompletePendingFunction(_stateController);
 
                     if (!string.IsNullOrEmpty(functionCall.Error))
                     {

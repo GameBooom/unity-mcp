@@ -103,8 +103,7 @@ namespace Funplay.Editor.Tools
             {
                 var result = await _invoker.InvokeAsync(functionCall);
                 functionCall.Result = result;
-                DomainReloadHandler.ClearPendingFunction();
-                _stateController.ReturnToPreviousState();
+                DomainReloadHandler.CompletePendingFunction(_stateController);
 
                 if (result != null && result.StartsWith("Error:"))
                 {

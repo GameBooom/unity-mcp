@@ -18,6 +18,12 @@ namespace Funplay.Editor.DI
 
         static RootScopeServices()
         {
+            if (Application.isBatchMode)
+            {
+                PluginDebugLogger.Log("[Funplay] Root services skipped in Unity batch mode process.");
+                return;
+            }
+
             Initialize();
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
         }

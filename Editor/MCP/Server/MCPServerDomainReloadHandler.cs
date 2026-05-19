@@ -17,11 +17,19 @@ namespace Funplay.Editor.MCP.Server
     {
         private const string WasRunningKey = "Funplay_MCPServer_WasRunning";
         private const string PortKey = "Funplay_MCPServer_Port";
+        private static bool _restartScheduled;
+        private static bool _restartInProgress;
 
         static MCPServerDomainReloadHandler()
         {
+            if (Application.isBatchMode)
+                return;
+
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeReload;
             AssemblyReloadEvents.afterAssemblyReload += OnAfterReload;
+
+            if (IsPendingPostReloadRestart())
+                SchedulePostReloadRestart();
         }
 
         internal static void PrepareForReload(IServiceProvider services)
@@ -81,43 +89,76 @@ namespace Funplay.Editor.MCP.Server
                 if (SessionState.GetBool(WasRunningKey, false))
                 {
                     PluginDebugLogger.Log("[Funplay MCP Server] Restarting server after domain reload");
-
-                    EditorApplication.delayCall += () =>
-                    {
-                        try
-                        {
-                            int savedPort = SessionState.GetInt(PortKey, -1);
-                            var settings = RootScopeServices.Services?.GetService(typeof(ISettingsController)) as ISettingsController;
-                            if (savedPort > 0 && settings != null && settings.MCPServerPort != savedPort)
-                            {
-                                settings.MCPServerPort = savedPort;
-                            }
-
-                            var mcpServer = RootScopeServices.Services?.GetService(typeof(MCPServerService)) as MCPServerService;
-                            if (mcpServer != null)
-                            {
-                                _ = mcpServer.StartAsync();
-                            }
-                            else
-                            {
-                                Debug.LogWarning("[Funplay MCP Server] Could not restart: service not found");
-                            }
-                        }
-                        catch (System.Exception ex)
-                        {
-                            Debug.LogError($"[Funplay MCP Server] Error restarting after reload: {ex.Message}");
-                        }
-                        finally
-                        {
-                            SessionState.EraseBool(WasRunningKey);
-                            SessionState.EraseInt(PortKey);
-                        }
-                    };
+                    SchedulePostReloadRestart();
                 }
             }
             catch (System.Exception ex)
             {
                 Debug.LogError($"[Funplay MCP Server] Error in OnAfterReload: {ex.Message}");
+            }
+        }
+
+        private static void SchedulePostReloadRestart()
+        {
+            if (_restartScheduled)
+                return;
+
+            _restartScheduled = true;
+            EditorApplication.delayCall += RestartWhenEditorIsReady;
+            EditorApplication.update += RestartWhenEditorIsReady;
+            RestartWhenEditorIsReady();
+        }
+
+        private static async void RestartWhenEditorIsReady()
+        {
+            if (_restartInProgress)
+                return;
+
+            if (!SessionState.GetBool(WasRunningKey, false))
+            {
+                EditorApplication.update -= RestartWhenEditorIsReady;
+                _restartScheduled = false;
+                return;
+            }
+
+            if (EditorApplication.isCompiling)
+                return;
+
+            var services = RootScopeServices.Services;
+            if (services == null)
+                return;
+
+            var mcpServer = services.GetService(typeof(MCPServerService)) as MCPServerService;
+            var settings = services.GetService(typeof(ISettingsController)) as ISettingsController;
+            if (mcpServer == null)
+                return;
+
+            EditorApplication.update -= RestartWhenEditorIsReady;
+            _restartScheduled = false;
+            _restartInProgress = true;
+
+            try
+            {
+                int savedPort = SessionState.GetInt(PortKey, -1);
+                if (savedPort > 0 && settings != null && settings.MCPServerPort != savedPort)
+                    settings.MCPServerPort = savedPort;
+
+                if (!mcpServer.IsRunning)
+                {
+                    var started = await mcpServer.StartAsync();
+                    if (!started)
+                        Debug.LogError("[Funplay MCP Server] Failed to restart after domain reload.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Funplay MCP Server] Error restarting after reload: {ex.Message}");
+            }
+            finally
+            {
+                SessionState.EraseBool(WasRunningKey);
+                SessionState.EraseInt(PortKey);
+                _restartInProgress = false;
             }
         }
     }

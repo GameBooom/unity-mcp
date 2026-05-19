@@ -69,6 +69,12 @@ namespace Funplay.Editor.MCP.Server
 
         public async Task<bool> StartAsync(CancellationToken ct = default)
         {
+            if (Application.isBatchMode)
+            {
+                Debug.LogWarning("[Funplay MCP Server] Skipping server start in Unity batch mode process.");
+                return false;
+            }
+
             if (_disposed)
             {
                 Debug.LogWarning("[Funplay MCP Server] Cannot start: service is disposed");
@@ -325,7 +331,7 @@ namespace Funplay.Editor.MCP.Server
                     summary += " The MCP server recovered after reload. Re-run the tool if more work is needed.";
                 }
 
-                var status = IsErrorResult(scriptResult) || string.IsNullOrEmpty(scriptResult)
+                var status = IsErrorResult(scriptResult)
                     ? MCPToolCallStatus.Error
                     : MCPToolCallStatus.Success;
 
